@@ -1,0 +1,227 @@
+package timewarrior
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+)
+
+var DatetimeLayout = "20060102T150405Z"
+
+type Interval struct {
+	ID    int       `json:"id"`
+	Start *Datetime `json:"start"`
+	End   *Datetime `json:"end"`
+	Tags  []string  `json:"tags"`
+}
+
+// Returns true if the interval is closed.
+func (interval Interval) IsClosed() bool {
+	return interval.End != nil
+}
+
+// Returns true if the interval is open.
+func (interval Interval) IsOpen() bool {
+	return interval.End == nil
+}
+
+// Returns a string representation of the interval suitable for the Timewarrior database file(s)
+func (interval *Interval) DatabaseString() string {
+	if interval.End == nil {
+		return fmt.Sprintf(
+			"inc %s # %s",
+			interval.Start.String(),
+			tagsToDatabaseString(interval.Tags),
+		)
+	}
+	return fmt.Sprintf(
+		"inc %s - %s # %s",
+		interval.Start.String(),
+		interval.End.String(),
+		tagsToDatabaseString(interval.Tags),
+	)
+}
+
+// Returns a JSON-like string representation of the interval.
+func (interval Interval) String() string {
+	return fmt.Sprintf(
+		"{\n\tID: %d\n\tStart: %s\n\tEnd: %s\n\tTags: %s\n}\n",
+		interval.ID,
+		interval.Start,
+		interval.End,
+		interval.Tags,
+	)
+}
+
+// Returns tags as an array of strings. Any strings with spaces in them are enclosed in single quotes.
+func (interval Interval) GetTags() []string {
+	out := make([]string, len(interval.Tags))
+	for i, tag := range interval.Tags {
+		if strings.Count(tag, " ") > 0 {
+			out[i] = fmt.Sprintf("'%s'", tag)
+		} else {
+			out[i] = tag
+		}
+	}
+	return out
+}
+
+// Returns true if the interval starts before the given interval.
+func (interval Interval) StartsBefore(other Interval) bool {
+	return int(interval.Start.Time.Sub(other.Start.Time)) < 0
+}
+
+// Returns true if the interval overlaps with the other interval, and the duration of the overlap.
+func (interval Interval) Overlaps(other Interval) (bool, time.Duration) {
+	if interval.End == nil && other.End == nil {
+		return overlapsBothOpen(interval, other)
+	}
+
+	if interval.End == nil {
+		return overlapsOneOpen(interval, other)
+	}
+
+	if other.End == nil {
+		return overlapsOneOpen(other, interval)
+	}
+
+	// Both intervals have end times, check if they overlap
+	return overlapsBothClosed(interval, other)
+}
+
+// Returns true if the interval contains the given date.
+func (interval Interval) Contains(date time.Time) bool {
+	var start, end time.Time
+	zone, _ := date.Zone()
+	if zone != "UTC" {
+		zoneName, offset := time.Now().Zone()
+		localZone := time.FixedZone(zoneName, offset)
+		start = interval.Start.In(localZone)
+		end = interval.End.In(localZone)
+	} else {
+		start = interval.Start.Time
+		end = interval.End.Time
+	}
+	return date == start || (date.After(start) && date.Before(end))
+}
+
+func overlapsBothOpen(interval Interval, other Interval) (bool, time.Duration) {
+	// Both intervals are open-ended -> they overlap.
+	// Figure out how much overlap they have as of now.
+	now := time.Now()
+	if interval.Start.Time.Before(other.Start.Time) {
+		return true, now.Sub(other.Start.Time)
+	}
+	return true, now.Sub(interval.Start.Time)
+}
+
+func overlapsOneOpen(openInterval Interval, closedInterval Interval) (bool, time.Duration) {
+	// First interval is open-ended -> check if the second interval ends *after* the first starts
+	if closedInterval.End.After(openInterval.Start.Time) {
+		if closedInterval.Start.After(openInterval.Start.Time) {
+			return true, closedInterval.End.Time.Sub(closedInterval.Start.Time)
+		}
+		return true, closedInterval.End.Time.Sub(openInterval.Start.Time)
+	}
+	return false, time.Duration(0)
+}
+
+func overlapsBothClosed(interval1 Interval, interval2 Interval) (bool, time.Duration) {
+	var t1, t2 time.Time
+	//nolint: nestif // simplify later (if possible)
+	if interval1.Start.Before(interval2.Start.Time) && interval2.Start.Before(interval1.End.Time) {
+		t1 = interval2.Start.Time
+		if interval2.End.Before(interval1.End.Time) {
+			t2 = interval2.End.Time
+		} else {
+			t2 = interval1.End.Time
+		}
+		return true, t2.Sub(t1)
+	} else if interval1.Start.Before(interval2.End.Time) && interval2.Start.Before(interval1.End.Time) {
+		t1 = interval1.Start.Time
+		if interval2.End.Before(interval1.End.Time) {
+			t2 = interval2.End.Time
+		} else {
+			t2 = interval1.End.Time
+		}
+		return true, t2.Sub(t1)
+	}
+	return false, 0
+}
+
+// Print a list of tags to a string, suitable for writing to an interval in the database
+func tagsToDatabaseString(tags []string) string {
+	if len(tags) == 0 {
+		return ""
+	}
+	newTags := make([]string, len(tags))
+	for i, tag := range tags {
+		newTags[i] = tagToDatabaseString(tag)
+	}
+	return strings.Join(newTags, " ")
+}
+
+func tagToDatabaseString(tag string) string {
+	if strings.Count(tag, " ") > 0 {
+		return fmt.Sprintf("\"%s\"", tag)
+	}
+	return tag
+}
+
+// Datetime
+type Datetime struct {
+	time.Time
+}
+
+func NewDatetimeFromString(s string) (Datetime, error) {
+	parsedTime, err := time.Parse(DatetimeLayout, s)
+	if err != nil {
+		return Datetime{}, err
+	}
+	return Datetime{
+		parsedTime,
+	}, nil
+}
+
+func (t *Datetime) UnmarshalJSON(data []byte) error {
+	// Define the layout string based on the input format
+	layout := "20060102T150405Z"
+
+	// Parse the string into a time.Time struct
+	parsedTime, err := time.Parse(`"`+layout+`"`, string(data))
+	if err != nil {
+		return err
+	}
+
+	// Set the parsed time to the CustomTime field
+	t.Time = parsedTime
+	return nil
+}
+
+func (t Datetime) MarshalJSON() ([]byte, error) {
+	return json.Marshal(t.Time)
+}
+
+func (t Datetime) String() string {
+	return t.Time.Format("20060102T150405Z")
+}
+
+func (t Datetime) DateString() string {
+	return t.Time.Format("2006-01-02")
+}
+
+func (t Datetime) TimeString() string {
+	return t.Time.Format("15:04")
+}
+
+func (t Datetime) LocalString() string {
+	return t.Time.Local().Format("20060102T150405")
+}
+
+func (t Datetime) LocalDateString() string {
+	return t.Time.Local().Format("2006-01-02")
+}
+func (t Datetime) LocalTimeString() string {
+	return t.Time.Local().Format("15:04")
+}

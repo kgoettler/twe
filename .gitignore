@@ -1,0 +1,7 @@
+data/
+bin/
+.vscode/
+timewarrior/testdata/db
+work/
+.DS_Store
+.envrc

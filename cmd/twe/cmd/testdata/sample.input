@@ -1,0 +1,91 @@
+color: off
+confirmation: on
+debug: off
+journal.size: -1
+reports.day.axis: internal
+reports.day.cell: 15
+reports.day.day: yes
+reports.day.holidays: no
+reports.day.hours: all
+reports.day.lines: 2
+reports.day.month: no
+reports.day.spacing: 1
+reports.day.summary: yes
+reports.day.totals: no
+reports.day.week: no
+reports.day.weekday: yes
+reports.month.cell: 15
+reports.month.day: yes
+reports.month.holidays: yes
+reports.month.hours: all
+reports.month.lines: 1
+reports.month.month: yes
+reports.month.spacing: 1
+reports.month.summary: yes
+reports.month.totals: yes
+reports.month.week: yes
+reports.month.weekday: yes
+reports.summary.holidays: yes
+reports.week.cell: 15
+reports.week.day: yes
+reports.week.holidays: yes
+reports.week.hours: all
+reports.week.lines: 1
+reports.week.month: no
+reports.week.spacing: 1
+reports.week.summary: yes
+reports.week.totals: yes
+reports.week.week: yes
+reports.week.weekday: yes
+temp.config: /Users/kgoettler/src/personal/go/twe/timewarrior/testdata/db//timewarrior.cfg
+temp.db: /Users/kgoettler/src/personal/go/twe/timewarrior/testdata/db/
+temp.extensions: /Users/kgoettler/src/personal/go/twe/timewarrior/testdata/db//extensions
+temp.report.end: 20240108T050000Z
+temp.report.start: 20240101T050000Z
+temp.report.tags: 
+temp.version: 1.7.0
+theme.colors.exclusion: gray8 on gray4
+theme.colors.holiday: gray4
+theme.colors.label: gray4
+theme.colors.today: white
+theme.description: Built-in default
+verbose: on
+
+[
+{"id":35,"start":"20240101T050000Z","end":"20240101T110000Z","tags":["Sleep","Test Day 01"]},
+{"id":34,"start":"20240101T110000Z","end":"20240101T120000Z","tags":["Shower","Test Day 01"]},
+{"id":33,"start":"20240101T120000Z","end":"20240101T130000Z","tags":["Breakfast","Test Day 01"]},
+{"id":32,"start":"20240101T130000Z","end":"20240101T140000Z","tags":["Commuting to Work","Test Day 01"]},
+{"id":31,"start":"20240101T140000Z","end":"20240101T220000Z","tags":["Test Day 01","Work"]},
+{"id":30,"start":"20240102T050000Z","end":"20240102T110000Z","tags":["Sleep","Test Day 02"]},
+{"id":29,"start":"20240102T110000Z","end":"20240102T120000Z","tags":["Shower","Test Day 02"]},
+{"id":28,"start":"20240102T120000Z","end":"20240102T130000Z","tags":["Breakfast","Test Day 02"]},
+{"id":27,"start":"20240102T130000Z","end":"20240102T140000Z","tags":["Commuting to Work","Test Day 02"]},
+{"id":26,"start":"20240102T140000Z","end":"20240102T220000Z","tags":["Test Day 02","Work"]},
+{"id":25,"start":"20240103T050000Z","end":"20240103T110000Z","tags":["Sleep","Test Day 03"]},
+{"id":24,"start":"20240103T110000Z","end":"20240103T120000Z","tags":["Shower","Test Day 03"]},
+{"id":23,"start":"20240103T120000Z","end":"20240103T130000Z","tags":["Breakfast","Test Day 03"]},
+{"id":22,"start":"20240103T130000Z","end":"20240103T140000Z","tags":["Commuting to Work","Test Day 03"]},
+{"id":21,"start":"20240103T140000Z","end":"20240103T220000Z","tags":["Test Day 03","Work"]},
+{"id":20,"start":"20240104T050000Z","end":"20240104T110000Z","tags":["Sleep","Test Day 04"]},
+{"id":19,"start":"20240104T110000Z","end":"20240104T120000Z","tags":["Shower","Test Day 04"]},
+{"id":18,"start":"20240104T120000Z","end":"20240104T130000Z","tags":["Breakfast","Test Day 04"]},
+{"id":17,"start":"20240104T130000Z","end":"20240104T140000Z","tags":["Commuting to Work","Test Day 04"]},
+{"id":16,"start":"20240104T140000Z","end":"20240104T220000Z","tags":["Test Day 04","Work"]},
+{"id":15,"start":"20240105T050000Z","end":"20240105T110000Z","tags":["Sleep","Test Day 05"]},
+{"id":14,"start":"20240105T110000Z","end":"20240105T120000Z","tags":["Shower","Test Day 05"]},
+{"id":13,"start":"20240105T120000Z","end":"20240105T130000Z","tags":["Breakfast","Test Day 05"]},
+{"id":12,"start":"20240105T130000Z","end":"20240105T140000Z","tags":["Commuting to Work","Test Day 05"]},
+{"id":11,"start":"20240105T140000Z","end":"20240105T220000Z","tags":["Test Day 05","Work"]},
+{"id":10,"start":"20240106T050000Z","end":"20240106T110000Z","tags":["Sleep","Test Day 06"]},
+{"id":9,"start":"20240106T110000Z","end":"20240106T120000Z","tags":["Shower","Test Day 06"]},
+{"id":8,"start":"20240106T120000Z","end":"20240106T130000Z","tags":["Breakfast","Test Day 06"]},
+{"id":7,"start":"20240106T130000Z","end":"20240106T140000Z","tags":["Commuting to Work","Test Day 06"]},
+{"id":6,"start":"20240106T140000Z","end":"20240106T220000Z","tags":["Test Day 06","Work"]},
+{"id":5,"start":"20240107T050000Z","end":"20240107T110000Z","tags":["Sleep","Test Day 07"]},
+{"id":4,"start":"20240107T110000Z","end":"20240107T120000Z","tags":["Shower","Test Day 07"]},
+{"id":3,"start":"20240107T120000Z","end":"20240107T130000Z","tags":["Breakfast","Test Day 07"]},
+{"id":2,"start":"20240107T130000Z","end":"20240107T140000Z","tags":["Commuting to Work","Test Day 07"]},
+{"id":1,"start":"20240107T140000Z","end":"20240107T220000Z","tags":["Test Day 07","Work"]}
+]
+

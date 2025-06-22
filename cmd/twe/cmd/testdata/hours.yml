@@ -1,0 +1,15 @@
+---
+
+2024-01-01:
+  - 00:00 - 06:00 - Sleep
+  - 06:00 - 07:00 - Shower
+  - 07:00 - 08:00 - Breakfast
+  - 08:00 - 09:00 - Commute
+  - 09:00 - 17:00 - Work
+
+2024-01-02:
+  - 00:00 - 06:00 - Sleep
+  - 06:00 - 07:00 - Shower
+  - 07:00 - 08:00 - Breakfast
+  - 08:00 - 09:00 - Commute, Business
+  - 09:00 - 17:00 - Work, Working from Home
