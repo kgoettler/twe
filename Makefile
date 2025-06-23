@@ -1,5 +1,12 @@
 BINDIR ?=./bin
-TIMEWARRIORDB ?=$(HOME)/.timewarrior
+
+ifeq ($(origin TIMEWARRIORDB), undefined)
+	ifneq ("$(wildcard $(HOME)/.timewarrior)","")
+		TIMEWARRIORDB := $(HOME)/.timewarrior
+	else ifneq ("$(wildcard $(HOME)/.config/timewarrior)","")
+		TIMEWARRIORDB := $(HOME)/.config/timewarrior
+	endif
+endif
 INSTALLDIR ?=$(HOME)/.local/bin
 
 VERSION:=$(shell git rev-parse --abbrev-ref HEAD)-$(shell git rev-parse --short HEAD)
