@@ -18,7 +18,7 @@ import (
 )
 
 type TimewarriorBackend interface {
-	Delete(interval timew.Interval) error
+	Delete(id int) error
 	Export(args ...string) ([]timew.Interval, error)
 	Modify(id int, field string, value string) error
 	Retag(id int, tags []string) error
