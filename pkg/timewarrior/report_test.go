@@ -37,8 +37,11 @@ func (suite *TWReportSuite) TestNewTimewarrior() {
 }
 
 func (suite *TWReportSuite) TestLast() {
-	last := suite.tw.Last()
-	suite.Equal("20240106T120000Z", last)
+	last, err := suite.tw.Last()
+	suite.NoError(err)
+	expected, err := NewDatetimeFromString("20240106T120000Z")
+	suite.NoError(err)
+	suite.Equal(expected, last)
 }
 
 func (suite *TWReportSuite) TestGetUniqueTags() {
@@ -52,26 +55,4 @@ func (suite *TWReportSuite) TestDateBounds() {
 	ti, tf, err := suite.tw.GetDateRange()
 	require.NoError(err)
 	require.Greater(tf.Time, ti.Time)
-}
-
-func (suite *TWReportSuite) TestDates() {
-	require := suite.Require()
-	dates, err := suite.tw.GetDates(nil)
-	require.NoError(err)
-	require.Len(dates, 1)
-}
-
-func (suite *TWReportSuite) TestIsSingleWeek_OK() {
-	require := suite.Require()
-	ok := suite.tw.IsSingleWeek()
-	require.True(ok)
-}
-
-func (suite *TWReportSuite) TestJSONString() {
-	require := suite.Require()
-
-	// Dump to JSON string
-	str, err := suite.tw.JSONString()
-	require.NoError(err)
-	require.NotEmpty(str)
 }

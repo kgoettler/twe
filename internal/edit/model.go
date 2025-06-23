@@ -400,7 +400,7 @@ func (m *Model) RemoveRow() {
 
 	// If the current interval exists in the Timewarrior database, delete it.
 	if m.data[i].Interval.ID > 0 {
-		err := m.backend.Delete(m.data[i].Interval)
+		err := m.backend.Delete(m.data[i].Interval.ID)
 		if err != nil {
 			m.message = fmt.Errorf("deleting interval: %w", err).Error()
 		}

@@ -8,18 +8,22 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"time"
 )
 
 const (
-	HoursInDay = 24
+	hoursInDay = 24
 )
 
+// Report contains the data passed to a Timewarrior report via the [Extension API].
+// [Extension API]: https://timewarrior.net/docs/api/
 type Report struct {
 	Config    map[string]string
 	Intervals []Interval
 }
 
+// Return a new Report from an io.Reader. This is the primary mechanism for
+// creating Reports; extensions should pass os.Stdin as the input reader to this
+// constructor.
 func NewReport(reader io.Reader) (*Report, error) {
 	scanner := bufio.NewScanner(reader)
 
@@ -61,18 +65,20 @@ func NewReport(reader io.Reader) (*Report, error) {
 	return &tw, nil
 }
 
-func (tw *Report) Last() string {
+// Returns the last recorded interval in the report.
+func (tw *Report) Last() (Datetime, error) {
 	if len(tw.Intervals) == 0 {
-		return ""
+		return Datetime{}, fmt.Errorf("report contains no intervals")
 	}
-
 	lastInterval := tw.Intervals[len(tw.Intervals)-1]
 	if lastInterval.End != nil {
-		return lastInterval.End.String()
+		return *lastInterval.End, nil
 	}
-	return lastInterval.Start.String()
+	return *lastInterval.Start, nil
 }
 
+// Returns a slice containing the unique tags attached to intervals within the
+// report.
 func (tw *Report) GetUniqueTags() []string {
 	// Extract unique tags and days
 	tagSet := make(map[string]struct{})
@@ -92,14 +98,20 @@ func (tw *Report) GetUniqueTags() []string {
 	return tags
 }
 
+// Returns `temp.report.start` as a Datetime. If it is not defined for the
+// report, a non-nil error is returned.
 func (tw *Report) GetStartDate() (Datetime, error) {
 	return tw.getConfigAsDatetime("temp.report.start")
 }
 
+// Returns `temp.report.end` as a Datetime. If it is not defined for the report,
+// a non-nil error is returned.
 func (tw *Report) GetEndDate() (Datetime, error) {
 	return tw.getConfigAsDatetime("temp.report.end")
 }
 
+// Returns `temp.report.start` and `temp.report.end` as Datetimes. If either is
+// not defined for the report, a non-nil error is returned.
 func (tw *Report) GetDateRange() (Datetime, Datetime, error) {
 	ti, err := tw.GetStartDate()
 	if err != nil {
@@ -110,58 +122,6 @@ func (tw *Report) GetDateRange() (Datetime, Datetime, error) {
 		return Datetime{}, Datetime{}, err
 	}
 	return ti, tf, nil
-}
-
-// Get array of dates in which the report intervals are present
-func (tw *Report) GetDates(zone *time.Location) ([]Interval, error) {
-	// Use UTC for default zone
-	if zone == nil {
-		zone = time.UTC
-	}
-
-	// Get report bounds
-	dateStart, dateEnd, err := tw.GetDateRange()
-	if err != nil {
-		return nil, err
-	}
-
-	// Allocate output
-	days := make([]Interval, 0)
-
-	// Loop
-	currentTime := dateStart.Time
-	for currentTime.Before(dateEnd.Time) || currentTime.Equal(dateStart.Time) {
-		interval := Interval{
-			Start: &Datetime{currentTime.In(zone)},
-		}
-		interval.End = &Datetime{interval.Start.Add(time.Hour * HoursInDay)}
-		days = append(days, interval)
-		currentTime = currentTime.Add(time.Hour * HoursInDay) // Add 24 hours to move to the next day
-	}
-	return days, nil
-}
-
-func (tw *Report) IsSingleWeek() bool {
-	ti, tf, err := tw.GetDateRange()
-	if err != nil {
-		return false
-	}
-
-	dt := tf.Time.Sub(ti.Time)
-	days := dt.Hours() / 24
-
-	if days > 7 {
-		return false
-	}
-	return true
-}
-
-func (tw *Report) JSONString() (string, error) {
-	intervalBytes, err := json.Marshal(tw.Intervals)
-	if err != nil {
-		return "", err
-	}
-	return string(intervalBytes), nil
 }
 
 func (tw *Report) getConfigAsDatetime(field string) (Datetime, error) {

@@ -10,6 +10,7 @@ import (
 	"strings"
 )
 
+// Error struct containing information returned by the Timewarrior CLI.
 type CLIError struct {
 	Command string
 	Stdout  string
@@ -17,27 +18,29 @@ type CLIError struct {
 	error   error
 }
 
-// Error implements the error interface.
+// Returns STDERR.
 func (e *CLIError) Error() string {
 	return e.Stderr
 }
 
-// Unwrap allows errors.Is and errors.As to work with wrapped errors.
 func (e *CLIError) Unwrap() error {
 	return e.error
 }
 
+// CLI wraps the Timewarrior command-line interface.
 type CLI struct {
 	baseCmd  string
 	baseArgs []string
 }
 
+// Construct a new CLI.
 func NewCLI() CLI {
 	return CLI{
 		baseCmd: "timew",
 	}
 }
 
+// Calls `timew export @<id>` and returns the result as an Interval.
 func (cli *CLI) GetIntervalByID(id int) (Interval, error) {
 	cmd := cli.buildCommand("export", fmt.Sprintf("@%d", id))
 	output, err := cmd.Output()
@@ -52,21 +55,25 @@ func (cli *CLI) GetIntervalByID(id int) (Interval, error) {
 	return intervals[0], nil
 }
 
-func (cli *CLI) Delete(interval Interval) error {
-	_, err := cli.runCommand("delete", fmt.Sprintf("@%d", interval.ID))
+// Calls `timew delete @<id>`.
+func (cli *CLI) Delete(id int) error {
+	_, err := cli.runCommand("delete", fmt.Sprintf("@%d", id))
 	return err
 }
 
+// Calls `timew modify start|end @<id> <value>`.
 func (cli *CLI) Modify(id int, field string, value string) error {
 	_, err := cli.runCommand("modify", field, fmt.Sprintf("@%d", id), value, ":adjust")
 	return err
 }
 
+// Calls `timew undo`.
 func (cli *CLI) Undo() error {
 	_, err := cli.runCommand("undo")
 	return err
 }
 
+// Calls `timew export` with the given arguments.
 func (cli *CLI) Export(args ...string) ([]Interval, error) {
 	// Run
 	output, err := cli.runCommand(append([]string{"export"}, args...)...)
@@ -83,6 +90,7 @@ func (cli *CLI) Export(args ...string) ([]Interval, error) {
 	return intervals, nil
 }
 
+// Runs a Timewarrior extension/report with the given arguments and returns an io.Reader to the result.
 func (cli *CLI) Report(args ...string) (io.Reader, error) {
 	output, err := cli.runCommand(args...)
 	if err != nil {
@@ -91,6 +99,7 @@ func (cli *CLI) Report(args ...string) (io.Reader, error) {
 	return bytes.NewReader(output), nil
 }
 
+// Calls `timew retag @<id> <tags>`
 func (cli *CLI) Retag(id int, tags []string) error {
 	// #nosec G204
 	args := []string{
@@ -102,6 +111,7 @@ func (cli *CLI) Retag(id int, tags []string) error {
 	return err
 }
 
+// Calls `timew track` to record the given interval. Note: uses the `:adjust` argument to overwrite any overlapping intervals.
 func (cli *CLI) Track(interval Interval) error {
 	args := []string{
 		"track",

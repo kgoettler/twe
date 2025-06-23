@@ -57,7 +57,7 @@ func (suite *CLISuite) TestTrack() {
 	cli := NewCLI()
 	err := cli.Track(interval)
 	suite.Require().NoError(err)
-	err = cli.Delete(interval)
+	err = cli.Delete(interval.ID)
 	suite.Require().NoError(err)
 }
 func (suite *CLISuite) TestReport_OK() {

@@ -37,10 +37,6 @@ func Run(tw *timew.Report, options TimecardOptions) (string, error) {
 	// lipgloss.SetColorProfile(termenv.Ascii)
 	var err error
 
-	// Ensure report is 1 week long
-	if !tw.IsSingleWeek() {
-		return "", err
-	}
 	data, err := NewTimecardData(tw, options.Filters)
 	if err != nil {
 		return "", fmt.Errorf("generating data: %w", err)

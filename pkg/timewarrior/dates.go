@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-var TIME_FORMATS = []string{
+var timeFormats = []string{
 	"2006-01-02",
 	"20060102",
 }
@@ -50,32 +50,32 @@ var datePatterns = []datePattern{
 		},
 	},
 	{
-		`^(yesterday)$`, 
-		func(now time.Time, _ string) (time.Time, error) { 
+		`^(yesterday)$`,
+		func(now time.Time, _ string) (time.Time, error) {
 			return now.Add(-24 * time.Hour), nil
 		},
 	},
 	{
 		`^(tomorrow)$`,
-		func(now time.Time, _ string) (time.Time, error) { 
-			return now.Add(24 * time.Hour), nil 
+		func(now time.Time, _ string) (time.Time, error) {
+			return now.Add(24 * time.Hour), nil
 		},
 	},
 	{
-		`^\\d{4}-\\d{2}-\\d{2}$`,
-		func(_ time.Time, match string) (time.Time, error) { 
-			return time.Parse("2006-01-02", match) 
-		},
-	},
-	{
-		`^\\d{8}$`,
+		`^\d{4}-\d{2}-\d{2}$`,
 		func(_ time.Time, match string) (time.Time, error) {
-			return time.Parse("20060102", match) 
+			return time.Parse("2006-01-02", match)
+		},
+	},
+	{
+		`^\d{8}$`,
+		func(_ time.Time, match string) (time.Time, error) {
+			return time.Parse("20060102", match)
 		},
 	},
 }
 
-var DATE_FORMATS = func() map[*regexp.Regexp]DateFunc {
+var dateFormats = func() map[*regexp.Regexp]DateFunc {
 	m := make(map[*regexp.Regexp]DateFunc)
 	for _, pat := range datePatterns {
 		m[regexp.MustCompile(pat.pattern)] = pat.fn
@@ -84,7 +84,7 @@ var DATE_FORMATS = func() map[*regexp.Regexp]DateFunc {
 }()
 
 func ConvertDateStringToTime(now time.Time, dateString string) (time.Time, error) {
-	for regex, dateFunc := range DATE_FORMATS {
+	for regex, dateFunc := range dateFormats {
 		m := regex.FindString(dateString)
 		if m != "" {
 			return dateFunc(now, dateString)

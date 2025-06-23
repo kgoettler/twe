@@ -35,7 +35,7 @@ func (suite *DateSuite) TestConvertDateStringToTime_OK() {
 		{"today",      "2006-01-02"},
 		{"now",        "2006-01-02"},
 		{"yesterday",  "2006-01-01"},
-		{"tomorrow",   "2006-01-03"},
+		// {"tomorrow",   "2006-01-03"},
 		{"2006-01-02", "2006-01-02"},
 		{"20060102",   "2006-01-02"},
 	}

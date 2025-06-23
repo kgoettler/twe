@@ -38,7 +38,7 @@ func (c intervalCase) getIntervals() []Interval {
 			parsedTimes[i] = nil
 			continue
 		}
-		t, err := time.Parse(DatetimeLayout, s)
+		t, err := time.Parse(datetimeLayout, s)
 		if err != nil {
 			panic(err)
 		}

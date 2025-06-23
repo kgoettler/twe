@@ -7,8 +7,9 @@ import (
 	"time"
 )
 
-var DatetimeLayout = "20060102T150405Z"
+const datetimeLayout = "20060102T150405Z"
 
+// Struct corresponding to a single Timewarrior interval.
 type Interval struct {
 	ID    int       `json:"id"`
 	Start *Datetime `json:"start"`
@@ -16,18 +17,18 @@ type Interval struct {
 	Tags  []string  `json:"tags"`
 }
 
-// Returns true if the interval is closed.
+// Returns true if the interval is closed (i.e. end datetime is defined).
 func (interval Interval) IsClosed() bool {
 	return interval.End != nil
 }
 
-// Returns true if the interval is open.
+// Returns true if the interval is open (i.e. end datetime is not defined).
 func (interval Interval) IsOpen() bool {
 	return interval.End == nil
 }
 
 // Returns a string representation of the interval suitable for the Timewarrior database file(s)
-func (interval *Interval) DatabaseString() string {
+func (interval Interval) DatabaseString() string {
 	if interval.End == nil {
 		return fmt.Sprintf(
 			"inc %s # %s",
@@ -54,7 +55,7 @@ func (interval Interval) String() string {
 	)
 }
 
-// Returns tags as an array of strings. Any strings with spaces in them are enclosed in single quotes.
+// Returns tags as a slice of strings. Any strings with spaces in them are enclosed in single quotes.
 func (interval Interval) GetTags() []string {
 	out := make([]string, len(interval.Tags))
 	for i, tag := range interval.Tags {
@@ -67,7 +68,7 @@ func (interval Interval) GetTags() []string {
 	return out
 }
 
-// Returns true if the interval starts before the given interval.
+// Returns true if the interval starts before the other interval.
 func (interval Interval) StartsBefore(other Interval) bool {
 	return int(interval.Start.Time.Sub(other.Start.Time)) < 0
 }
@@ -90,7 +91,7 @@ func (interval Interval) Overlaps(other Interval) (bool, time.Duration) {
 	return overlapsBothClosed(interval, other)
 }
 
-// Returns true if the interval contains the given date.
+// Returns true if the interval contains the given date/time.
 func (interval Interval) Contains(date time.Time) bool {
 	var start, end time.Time
 	zone, _ := date.Zone()
@@ -103,7 +104,7 @@ func (interval Interval) Contains(date time.Time) bool {
 		start = interval.Start.Time
 		end = interval.End.Time
 	}
-	return date == start || (date.After(start) && date.Before(end))
+	return date.Equal(start) || (date.After(start) && date.Before(end))
 }
 
 func overlapsBothOpen(interval Interval, other Interval) (bool, time.Duration) {
@@ -169,13 +170,15 @@ func tagToDatabaseString(tag string) string {
 	return tag
 }
 
-// Datetime
+// Datetime is a thin wrapper over time.Time which adds helper methods to assist
+// with serializing/deserializing times to/from Timewarrior.
 type Datetime struct {
 	time.Time
 }
 
+// Construct a new Datetime from a string with the format used interanlly by Timewarrior (i.e. "20060102T150405Z")
 func NewDatetimeFromString(s string) (Datetime, error) {
-	parsedTime, err := time.Parse(DatetimeLayout, s)
+	parsedTime, err := time.Parse(datetimeLayout, s)
 	if err != nil {
 		return Datetime{}, err
 	}
@@ -203,25 +206,32 @@ func (t Datetime) MarshalJSON() ([]byte, error) {
 	return json.Marshal(t.Time)
 }
 
+// Return a string representation of the datetime.
 func (t Datetime) String() string {
-	return t.Time.Format("20060102T150405Z")
+	return t.Time.Format(datetimeLayout)
 }
 
+// Return a string representation of the date (YYYY-mm-dd).
 func (t Datetime) DateString() string {
 	return t.Time.Format("2006-01-02")
 }
 
+// Return a string representation of the time (HH:MM).
 func (t Datetime) TimeString() string {
 	return t.Time.Format("15:04")
 }
 
+// Return a string representation of the datetime in the current timezone.
 func (t Datetime) LocalString() string {
 	return t.Time.Local().Format("20060102T150405")
 }
 
+// Return a string representation of the date (YYYY-mm-dd) in the current timezone.
 func (t Datetime) LocalDateString() string {
 	return t.Time.Local().Format("2006-01-02")
 }
+
+// Return a string representation of the time (HH:MM) in the current timezone.
 func (t Datetime) LocalTimeString() string {
 	return t.Time.Local().Format("15:04")
 }
