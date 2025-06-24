@@ -60,7 +60,7 @@ func (interval Interval) GetTags() []string {
 	out := make([]string, len(interval.Tags))
 	for i, tag := range interval.Tags {
 		if strings.Count(tag, " ") > 0 {
-			out[i] = fmt.Sprintf("'%s'", tag)
+			out[i] = fmt.Sprintf("%s", tag)
 		} else {
 			out[i] = tag
 		}
