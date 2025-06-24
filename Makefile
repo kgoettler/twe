@@ -9,9 +9,12 @@ ifeq ($(origin TIMEWARRIORDB), undefined)
 endif
 INSTALLDIR ?=$(HOME)/.local/bin
 
-VERSION:=$(shell git rev-parse --abbrev-ref HEAD)-$(shell git rev-parse --short HEAD)
-
-.PHONY: build
+VERSION:=$(shell \
+	if [ -z "$(shell git status --porcelain)" ] && git describe --tags --exact-match >/dev/null 2>&1; then \
+		git describe --tags --exact-match; \
+	else \
+		echo $$(git rev-parse --abbrev-ref HEAD).$$(git rev-parse --short HEAD); \
+	fi)
 
 build:
 	go build -ldflags="-X 'main.Version=$(VERSION)'" -o ${BINDIR}/twe ./cmd/twe/main.go
