@@ -11,11 +11,11 @@ var timeFormats = []string{
 	"20060102",
 }
 
-type DateFunc = func(time.Time, string) (time.Time, error)
+type dateFunc = func(time.Time, string) (time.Time, error)
 
 type datePattern struct {
 	pattern string
-	fn      DateFunc
+	fn      dateFunc
 }
 
 var weekdayMap = map[string]time.Weekday{
@@ -75,8 +75,8 @@ var datePatterns = []datePattern{
 	},
 }
 
-var dateFormats = func() map[*regexp.Regexp]DateFunc {
-	m := make(map[*regexp.Regexp]DateFunc)
+var dateFormats = func() map[*regexp.Regexp]dateFunc {
+	m := make(map[*regexp.Regexp]dateFunc)
 	for _, pat := range datePatterns {
 		m[regexp.MustCompile(pat.pattern)] = pat.fn
 	}
