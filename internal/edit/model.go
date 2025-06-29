@@ -22,6 +22,7 @@ type TimewarriorBackend interface {
 	Export(args ...string) ([]timew.Interval, error)
 	Modify(id int, field string, value string) error
 	Retag(id int, tags []string) error
+	Stop(stopTime *string) error
 	Track(interval timew.Interval) error
 	Undo() error
 }
@@ -463,12 +464,18 @@ type Row struct {
 
 // Create a new Row from a Timewarrior interval.
 func NewRow(interval timew.Interval) Row {
+	var startTime, endTime, tags string
+	startTime = interval.Start.LocalTimeString()
+	if interval.End != nil {
+		endTime = interval.End.LocalTimeString()
+	}
+	tags = strings.Join(interval.Tags, ",")
 	return Row{
 		Interval: interval,
 		cells: []cell{
-			newCell(interval.Start.LocalTimeString(), true),
-			newCell(interval.End.LocalTimeString(), true),
-			newCell(strings.Join(interval.Tags, ","), false),
+			newCell(startTime, true),
+			newCell(endTime, true),
+			newCell(tags, false),
 		},
 		date: interval.Start.Time,
 	}
@@ -540,13 +547,24 @@ func (r *Row) UpdateStart(backend TimewarriorBackend) error {
 }
 
 func (r *Row) UpdateEnd(backend TimewarriorBackend) error {
+	// Handle the case where the interval is open
+	isIntervalOpen := false
+	if r.Interval.End == nil {
+		r.Interval.End = &timew.Datetime{}
+		isIntervalOpen = true
+	}
 	err := r.setEndInInterval(r.date, r.cells[1].Value())
 	if err != nil {
 		return fmt.Errorf("setting end time: %w", err)
 	}
 
 	// Commit to Timewarrior
-	err = backend.Modify(r.Interval.ID, "end", r.Interval.End.LocalString())
+	if isIntervalOpen {
+		stopTime := r.Interval.End.LocalString()
+		err = backend.Stop(&stopTime)
+	} else {
+		err = backend.Modify(r.Interval.ID, "end", r.Interval.End.LocalString())
+	}
 	if err != nil {
 		return fmt.Errorf("writing to timewarrior: %w", err)
 	}

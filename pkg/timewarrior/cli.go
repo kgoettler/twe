@@ -111,6 +111,17 @@ func (cli *CLI) Retag(id int, tags []string) error {
 	return err
 }
 
+func (cli *CLI) Stop(stopTime *string) error {
+	args := []string{
+		"stop",
+	}
+	if stopTime != nil {
+		args = append(args, *stopTime)
+	}
+	_, err := cli.runCommand(args...)
+	return err
+}
+
 // Calls `timew track` to record the given interval. Note: uses the `:adjust` argument to overwrite any overlapping intervals.
 func (cli *CLI) Track(interval Interval) error {
 	args := []string{
