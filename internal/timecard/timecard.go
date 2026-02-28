@@ -25,16 +25,23 @@ type TimecardOptions struct {
 	InputFile    string
 }
 
+// TimecardData contains tabular timecard data.
+// The internal `data` field is a nested map with the structure:
+//
+//	{
+//	  "row": {
+//	     "column": time.Duration
+//	  }
+//	}
 type TimecardData struct {
-	data     map[string]timecardCol
-	rowNames []string
-	colNames []time.Time
+	data    map[string]timecardCol
+	rows    []string
+	columns []time.Time
 }
 type timecardCol = map[time.Time]time.Duration
 
 // Run the timecard report
 func Run(tw *timew.Report, options TimecardOptions) (string, error) {
-	// lipgloss.SetColorProfile(termenv.Ascii)
 	var err error
 
 	data, err := NewTimecardData(tw, options.Filters)
@@ -57,40 +64,52 @@ func Run(tw *timew.Report, options TimecardOptions) (string, error) {
 }
 
 func NewTimecardData(tw *timew.Report, filters []string) (TimecardData, error) {
-	// filter intervals (if needed)
-	var intervals []timew.Interval
+	// Localize intervals
+	intervals := localizeIntervals(tw.Intervals)
+
+	// Filter intervals
 	var err error
 	if len(filters) > 0 {
-		intervals, err = filterIntervals(tw.Intervals, filters)
+		intervals, err = filterIntervals(intervals, filters)
 		if err != nil {
 			return TimecardData{}, fmt.Errorf("filtering intervals: %w", err)
 		}
-	} else {
-		intervals = tw.Intervals
 	}
 
 	data := TimecardData{
 		data: make(map[string]map[time.Time]time.Duration),
 	}
 
-	rowNames := []string{}
-	colNames := []time.Time{}
+	rows := []string{}
+	columns := []time.Time{}
 	for _, interval := range intervals {
-		dateCur := interval.Start.Truncate(Day)
-		dateEnd := interval.End.Truncate(Day)
+		// Loop over each day this interval overlaps with, calculate the
+		// amount of overlap on that day, and add it to the data structure.
+		var iStart, iEnd, dateCur, dateEnd time.Time
+		iStart = interval.Start.Time
+		if interval.End != nil {
+			iEnd = interval.End.Time
+		} else {
+			iEnd = time.Now()
+		}
+		dateCur = midnightLocal(iStart)
+		dateEnd = midnightLocal(iEnd)
 		for dateCur.Compare(dateEnd) <= 0 {
-			overlapStart := maxTime(dateCur, interval.Start.Time)
-			overlapEnd := minTime(dateCur.Add(Day), interval.End.Time)
+			// overlapStart is midnight of the current day or the interval start time, whichever is later
+			// overlapEnd is midnight of the next day or the interval end time, whichever is earlier
+			overlapStart := maxTime(dateCur, iStart.In(time.Local))
+			overlapEnd := minTime(dateCur.Add(Day), iEnd.In(time.Local))
+			// overlapStart will be before overlapEnd until we've reached a day
+			// with which the interval no longer overlaps.
 			if overlapStart.Before(overlapEnd) {
 				duration := overlapEnd.Sub(overlapStart)
 				for _, tag := range interval.Tags {
-					date := overlapStart.Truncate(Day)
-					data.Add(tag, date, duration)
-					if !slices.Contains(rowNames, tag) {
-						rowNames = append(rowNames, tag)
+					data.Add(tag, dateCur, duration)
+					if !slices.Contains(rows, tag) {
+						rows = append(rows, tag)
 					}
-					if !slices.Contains(colNames, date) {
-						colNames = append(colNames, date)
+					if !slices.Contains(columns, dateCur) {
+						columns = append(columns, dateCur)
 					}
 				}
 			}
@@ -98,18 +117,19 @@ func NewTimecardData(tw *timew.Report, filters []string) (TimecardData, error) {
 		}
 	}
 
-	slices.Sort(rowNames)
-	slices.SortFunc(colNames, func(a, b time.Time) int { return a.Compare(b) })
-	data.rowNames = rowNames
-	data.colNames = colNames
+	slices.Sort(rows)
+	slices.SortFunc(columns, func(a, b time.Time) int { return a.Compare(b) })
+	data.rows = rows
+	data.columns = columns
 
-	if len(data.rowNames) == 0 && len(data.colNames) == 0 {
+	if len(data.rows) == 0 && len(data.columns) == 0 {
 		return data, fmt.Errorf("no data in range %s - %s", tw.Config["temp.report.start"], tw.Config["temp.report.end"])
 	}
 
 	return data, nil
 }
 
+// Add time for the given tag + date
 func (td TimecardData) Add(tag string, date time.Time, duration time.Duration) time.Duration {
 	_, ok := td.data[tag]
 	if !ok {
@@ -126,24 +146,25 @@ func (td TimecardData) Add(tag string, date time.Time, duration time.Duration) t
 }
 
 func (td TimecardData) Rows() int {
-	return len(td.rowNames)
+	return len(td.rows)
 }
 
 func (td TimecardData) Columns() int {
-	return len(td.colNames) + 1
+	return len(td.columns) + 1
 }
 
 func (td TimecardData) At(row, cell int) string {
 	if cell == 0 {
-		return td.rowNames[row]
+		return td.rows[row]
 	}
-	val, err := td.Get(td.rowNames[row], td.colNames[cell-1])
+	val, err := td.Get(td.rows[row], td.columns[cell-1])
 	if err != nil {
 		return ""
 	}
 	return formatDurationDecimal(val)
 }
 
+// Get hours logged for given tag on the given date.
 func (td TimecardData) Get(tag string, date time.Time) (time.Duration, error) {
 	col, ok := td.data[tag]
 	if !ok {
@@ -158,8 +179,8 @@ func (td TimecardData) Get(tag string, date time.Time) (time.Duration, error) {
 
 func (td TimecardData) StringTable() (string, error) {
 	// Format table
-	colNames := make([]string, len(td.colNames))
-	for i, col := range td.colNames {
+	colNames := make([]string, len(td.columns))
+	for i, col := range td.columns {
 		colNames[i] = col.Format(DayFormat)
 	}
 	t := tableFormatter.New().
@@ -169,7 +190,7 @@ func (td TimecardData) StringTable() (string, error) {
 		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("238"))).
 		StyleFunc(func(row, col int) lipgloss.Style {
 			switch {
-			case row == td.Rows() && col >= len(td.rowNames):
+			case row == td.Rows() && col >= len(td.rows):
 				if len(td.At(row-1, col)) > 0 {
 					return TotalRowStyle
 				} else {
@@ -195,6 +216,16 @@ func (td TimecardData) String() string {
 	return builder.String()
 }
 
+// Localize the start and end times in the provided intervals.
+func localizeIntervals(intervals []timew.Interval) []timew.Interval {
+	out := make([]timew.Interval, len(intervals))
+	for i, interval := range intervals {
+		out[i] = interval.Localize()
+	}
+	return out
+}
+
+// Filter out intervals without tags matching at least one of the provided filter regexps.
 func filterIntervals(intervals []timew.Interval, filters []string) ([]timew.Interval, error) {
 	out := []timew.Interval{}
 	filterPatterns := make([]*regexp.Regexp, len(filters))
@@ -241,6 +272,12 @@ func minTime(t1, t2 time.Time) time.Time {
 		return t1
 	}
 	return t2
+}
+
+// Return midnight for the provided date + location
+func midnightLocal(t time.Time) time.Time {
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, t.Location())
 }
 
 func formatDurationDecimal(d time.Duration) string {

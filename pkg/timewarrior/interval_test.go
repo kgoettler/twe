@@ -264,3 +264,11 @@ func (suite *IntervalSuite) TestDatetime_String() {
 	dateStr := date.TimeString()
 	suite.Equal("09:00", dateStr)
 }
+
+func (suite *IntervalSuite) TestDatetime_Local() {
+	date := &Datetime{}
+	_ = date.UnmarshalJSON([]byte(`"20221206T090000Z"`))
+	local := date.Local()
+	suite.Equal("09:00", date.TimeString())
+	suite.Equal("04:00", local.TimeString())
+}

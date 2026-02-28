@@ -44,6 +44,23 @@ func (interval Interval) DatabaseString() string {
 	)
 }
 
+// Return a new Interval where the start and end time locations are set to the local timezone.
+func (interval Interval) Localize() Interval {
+	out := Interval{
+		ID:   interval.ID,
+		Tags: interval.Tags,
+	}
+	if interval.Start != nil {
+		start := interval.Start.Local()
+		out.Start = &start
+	}
+	if interval.End != nil {
+		end := interval.End.Local()
+		out.End = &end
+	}
+	return out
+}
+
 // Returns a JSON-like string representation of the interval.
 func (interval Interval) String() string {
 	return fmt.Sprintf(
@@ -204,6 +221,11 @@ func (t *Datetime) UnmarshalJSON(data []byte) error {
 
 func (t Datetime) MarshalJSON() ([]byte, error) {
 	return json.Marshal(t.Time)
+}
+
+// Return a new Datetime with the location set to local time.
+func (t Datetime) Local() Datetime {
+	return Datetime{t.Time.Local()}
 }
 
 // Return a string representation of the datetime.
