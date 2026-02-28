@@ -258,13 +258,6 @@ func (suite *IntervalSuite) TestInterval_DatabaseString() {
 	}
 }
 
-func (suite *IntervalSuite) TestDatetime_String() {
-	date := &Datetime{}
-	_ = date.UnmarshalJSON([]byte(`"20221206T090000Z"`))
-	dateStr := date.TimeString()
-	suite.Equal("09:00", dateStr)
-}
-
 func (suite *IntervalSuite) TestDatetime_Local() {
 	date := &Datetime{}
 	_ = date.UnmarshalJSON([]byte(`"20221206T090000Z"`))

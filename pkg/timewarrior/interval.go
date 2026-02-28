@@ -247,13 +247,3 @@ func (t Datetime) TimeString() string {
 func (t Datetime) LocalString() string {
 	return t.Time.Local().Format("20060102T150405")
 }
-
-// Return a string representation of the date (YYYY-mm-dd) in the current timezone.
-func (t Datetime) LocalDateString() string {
-	return t.Time.Local().Format("2006-01-02")
-}
-
-// Return a string representation of the time (HH:MM) in the current timezone.
-func (t Datetime) LocalTimeString() string {
-	return t.Time.Local().Format("15:04")
-}

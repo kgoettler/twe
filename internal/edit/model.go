@@ -465,9 +465,9 @@ type Row struct {
 // Create a new Row from a Timewarrior interval.
 func NewRow(interval timew.Interval) Row {
 	var startTime, endTime, tags string
-	startTime = interval.Start.LocalTimeString()
+	startTime = interval.Start.Local().TimeString()
 	if interval.End != nil {
-		endTime = interval.End.LocalTimeString()
+		endTime = interval.End.Local().TimeString()
 	}
 	tags = strings.Join(interval.Tags, ",")
 	return Row{
