@@ -68,6 +68,9 @@ func (c *cursor) RemoveCol() {
 	if c.ncols > 0 {
 		c.ncols--
 	}
+	if c.pos.col >= c.ncols {
+		c.pos.col--
+	}
 }
 
 // GetRow returns the current row index of the cursor.
