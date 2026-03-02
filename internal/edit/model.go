@@ -256,16 +256,22 @@ func (m Model) View() string {
 		formattedRow := make([]string, row.GetWidth())
 		for j, cell := range row.cells {
 			// Determine the style of the cell
+			var style TextStyle
+			if j < 2 {
+				style = TimeStyle
+			} else {
+				style = DescStyle
+			}
 			if cell.Err != nil && len(cell.Value()) == cell.CharLimit {
 				cell.TextStyle = ErrStyle
 			} else if i == m.cursor.GetRow() && j == m.cursor.GetCol() {
 				if cell.Focused() {
-					cell.TextStyle = FocusStyle
+					cell.TextStyle = style.Focus
 				} else {
-					cell.TextStyle = HighlightStyle
+					cell.TextStyle = style.Highlight
 				}
 			} else {
-				cell.TextStyle = DefaultStyle
+				cell.TextStyle = style.Base
 			}
 			// Determine the value to show in the cell.
 			// Cells that are empty and not focused show a dimmed placeholder

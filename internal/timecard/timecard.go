@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kgoettler/twe/internal/styles"
 	timew "github.com/kgoettler/twe/pkg/timewarrior"
 
 	"github.com/charmbracelet/lipgloss"
@@ -16,6 +17,7 @@ import (
 var (
 	DayFormat = "Mon 01/02"
 	Day       = time.Hour * 24
+	EmptyChar = "-"
 )
 
 type TimecardOptions struct {
@@ -37,6 +39,9 @@ type TimecardData struct {
 	data    map[string]timecardCol
 	rows    []string
 	columns []time.Time
+
+	// Contains daily totals of hours logged
+	totals timecardCol
 }
 type timecardCol = map[time.Time]time.Duration
 
@@ -77,7 +82,8 @@ func NewTimecardData(tw *timew.Report, filters []string) (TimecardData, error) {
 	}
 
 	data := TimecardData{
-		data: make(map[string]map[time.Time]time.Duration),
+		data:   make(map[string]map[time.Time]time.Duration),
+		totals: make(map[time.Time]time.Duration),
 	}
 
 	rows := []string{}
@@ -103,6 +109,7 @@ func NewTimecardData(tw *timew.Report, filters []string) (TimecardData, error) {
 			// with which the interval no longer overlaps.
 			if overlapStart.Before(overlapEnd) {
 				duration := overlapEnd.Sub(overlapStart)
+				data.AddTotal(dateCur, duration)
 				for _, tag := range interval.Tags {
 					data.Add(tag, dateCur, duration)
 					if !slices.Contains(rows, tag) {
@@ -145,8 +152,17 @@ func (td TimecardData) Add(tag string, date time.Time, duration time.Duration) t
 	return td.data[tag][date]
 }
 
+func (td TimecardData) AddTotal(date time.Time, duration time.Duration) {
+	_, ok := td.totals[date]
+	if !ok {
+		td.totals[date] = duration
+	} else {
+		td.totals[date] += duration
+	}
+}
+
 func (td TimecardData) Rows() int {
-	return len(td.rows)
+	return len(td.rows) + 1
 }
 
 func (td TimecardData) Columns() int {
@@ -155,13 +171,24 @@ func (td TimecardData) Columns() int {
 
 func (td TimecardData) At(row, cell int) string {
 	if cell == 0 {
-		return td.rows[row]
+		if row == (td.Rows() - 1) {
+			return "TOTAL"
+		} else {
+			return td.rows[row]
+		}
 	}
-	val, err := td.Get(td.rows[row], td.columns[cell-1])
-	if err != nil {
-		return ""
+	var val time.Duration
+	var err error
+	if row == (td.Rows() - 1) {
+		val = td.totals[td.columns[cell-1]]
+		return formatDurationDecimal(val)
+	} else {
+		val, err = td.Get(td.rows[row], td.columns[cell-1])
+		if err != nil {
+			return EmptyChar
+		}
+		return formatDurationDecimal(val)
 	}
-	return formatDurationDecimal(val)
 }
 
 // Get hours logged for given tag on the given date.
@@ -187,19 +214,17 @@ func (td TimecardData) StringTable() (string, error) {
 		Data(td).
 		Headers(append([]string{"Tag"}, colNames...)...).
 		Border(lipgloss.NormalBorder()).
-		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("238"))).
+		BorderStyle(styles.BorderStyle).
 		StyleFunc(func(row, col int) lipgloss.Style {
 			switch {
-			case row == td.Rows() && col >= len(td.rows):
-				if len(td.At(row-1, col)) > 0 {
-					return TotalRowStyle
-				} else {
-					return OddRowStyle
-				}
+			case row == -1:
+				return styles.HeaderStyle
+			case row == (td.Rows() - 1):
+				return styles.TotalRowStyle
 			case row%2 == 0:
-				return EvenRowStyle
+				return styles.EvenRowStyle
 			default:
-				return OddRowStyle
+				return styles.OddRowStyle
 			}
 		})
 	ts := t.Render()
@@ -283,7 +308,7 @@ func midnightLocal(t time.Time) time.Time {
 func formatDurationDecimal(d time.Duration) string {
 	dstr := fmt.Sprintf("%g", d.Round(time.Hour/4).Hours())
 	if dstr == "0" {
-		return ""
+		return EmptyChar
 	}
 	return dstr
 }
