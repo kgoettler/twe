@@ -56,8 +56,17 @@ twe timecard
 twe timecard :lastweek
 
 # Timecard from specified date range
-twe timecard 2024-01-01 - 2024-01-08
+twe timecard 2026-01-01 - 2026-01-08
 ```
+
+By default `twe timecard` rounds all durations _up_ to the nearest 15-minute billing increment. You can adjust the increment via the `--increment` flag:
+
+```bash
+# Round up to the nearest 6th minute (0.1 hours)
+twe timecard --increment 6
+```
+
+Use the `--total-row` flag to add a row showing the total time recorded during each day. Use the `--total-col` flag to add a column showing the total time recorded for each tag throughout the specified dates:
 
 ### Import
 

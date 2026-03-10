@@ -2,7 +2,7 @@ package edit
 
 import (
 	"fmt"
-	"os"
+	"io"
 	"regexp"
 	"strings"
 	"time"
@@ -17,7 +17,82 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+const (
+	FieldText = iota
+	FieldTime
+)
+
+type ColumnSpec struct {
+	Label  string
+	Width  int
+	Get    func(interval timew.Interval) string
+	Action func(r *Row, backend TimewarriorBackend) error
+	Type   int
+}
+
+var COLUMNS = []ColumnSpec{
+	{
+		Label: "Start",
+		Width: 5,
+		Action: func(r *Row, backend TimewarriorBackend) error {
+			return r.UpdateStart(backend)
+		},
+		Get: func(interval timew.Interval) string {
+			if interval.Start != nil {
+				return interval.Start.Local().TimeString()
+			}
+			return ""
+		},
+		Type: FieldTime,
+	},
+	{
+		Label: "End",
+		Width: 5,
+		Action: func(r *Row, backend TimewarriorBackend) error {
+			return r.UpdateEnd(backend)
+		},
+		Get: func(interval timew.Interval) string {
+			if interval.End != nil {
+				return interval.End.Local().TimeString()
+			}
+			return ""
+		},
+		Type: FieldTime,
+	},
+	{
+		Label: "Tags",
+		Width: 30,
+		Action: func(r *Row, backend TimewarriorBackend) error {
+			return r.UpdateTags(backend)
+		},
+		Get: func(interval timew.Interval) string {
+			return strings.Join(interval.Tags, ",")
+		},
+	},
+	{
+		Label: "Annotation",
+		Width: 30,
+		Action: func(r *Row, backend TimewarriorBackend) error {
+			return r.UpdateAnnotation(backend)
+		},
+		Get: func(interval timew.Interval) string {
+			return interval.Annotation
+		},
+	},
+}
+
+var COLUMN_FORMAT = getFormatString(COLUMNS)
+
+func getFormatString(columns []ColumnSpec) string {
+	formatParts := make([]string, len(columns))
+	for i, column := range columns {
+		formatParts[i] = fmt.Sprintf("%%-%ds", column.Width)
+	}
+	return " " + strings.Join(formatParts, " ")
+}
+
 type TimewarriorBackend interface {
+	Annotate(id int, annotation string) error
 	Delete(id int) error
 	Export(args ...string) ([]timew.Interval, error)
 	Modify(id int, field string, value string) error
@@ -41,14 +116,18 @@ type Model struct {
 	help help.Model
 
 	// Keybindings
-	keys    keyMap
-	Logfile *os.File
+	keys     keyMap
+	editKeys editModeKeys
+
+	logfile io.Writer
+
+	log func(format string, a ...any)
 
 	// Message to display below the table
 	message string
 
-	// Indicates whether a cell has been selected for editing
-	selected bool
+	// Indicates whether a cell has been isEditing for editing
+	isEditing bool
 
 	// Indicates whether at least one keystroke has been processed in the current editing session.
 	firstKeyProcessed bool
@@ -57,25 +136,35 @@ type Model struct {
 	date time.Time
 }
 
-func NewModel(backend TimewarriorBackend, date time.Time) (Model, error) {
+func NewModel(backend TimewarriorBackend, date time.Time, logfile io.Writer) (Model, error) {
 	intervals, err := backend.Export(date.Format("2006-01-02"))
 	if err != nil {
 		return Model{}, err
 	}
 	data := make([]Row, len(intervals))
 	for i, interval := range intervals {
-		data[i] = NewRow(interval)
+		data[i] = NewRowFromInterval(interval)
 	}
-	cursor := NewCursor(len(data), 3)
-	return Model{
-		data:     data,
-		backend:  backend,
-		cursor:   &cursor,
-		help:     help.New(),
-		keys:     keys,
-		selected: false,
-		date:     date,
-	}, nil
+	cursor := NewCursor(len(data), len(COLUMNS))
+	m := Model{
+		data:      data,
+		backend:   backend,
+		cursor:    &cursor,
+		help:      help.New(),
+		keys:      keys,
+		editKeys:  editKeys,
+		isEditing: false,
+		date:      date,
+		logfile:   logfile,
+	}
+
+	if logfile != nil {
+		m.log = func(format string, a ...any) { fmt.Fprintf(logfile, format, a...) }
+	} else {
+		m.log = func(format string, a ...any) {}
+	}
+
+	return m, nil
 }
 
 func (m *Model) loadData() error {
@@ -85,7 +174,7 @@ func (m *Model) loadData() error {
 	}
 	m.data = make([]Row, len(intervals))
 	for i, interval := range intervals {
-		m.data[i] = NewRow(interval)
+		m.data[i] = NewRowFromInterval(interval)
 	}
 	return nil
 }
@@ -137,27 +226,22 @@ func (m Model) handleEditing(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// If esc key is pressed, cancel selection
 	switch msg := msg.(type) {
+	case curse.BlinkMsg:
+		return m, nil
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "esc", "enter":
+		switch {
+		case key.Matches(msg, m.editKeys.Esc):
 			cell.Blur()
 			m.firstKeyProcessed = false
-			m.selected = false
-
-			// Commit the row
+			m.isEditing = false
 			return m.UpdateRow(m.data[m.cursor.GetRow()])
-		case "shift+tab":
+		case key.Matches(msg, m.editKeys.Left):
 			return m.moveLeftWhileEditing()
-		case "tab":
+		case key.Matches(msg, m.editKeys.Right):
 			return m.moveRightWhileEditing()
-		case "ctrl+c":
+		case key.Matches(msg, m.editKeys.Quit):
 			return m, tea.Quit
 		}
-	}
-
-	if !m.firstKeyProcessed && cell.CharLimit > 0 && cell.CharLimit == len(cell.Value()) {
-		cell.SetValue("")
-		m.firstKeyProcessed = true
 	}
 
 	// Pass all other messages to textinput.Update method.
@@ -185,17 +269,16 @@ func (m Model) handleTableNavigation(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursor.Right()
 
 		case key.Matches(msg, m.keys.Add):
-			m.AddRow()
+			m, cmd = m.AddRow()
 
 		case key.Matches(msg, m.keys.Reload):
 			m, cmd = m.Reload()
 
 		case key.Matches(msg, m.keys.Remove):
-			m.RemoveRow()
-			_, cmd = m.Reload()
+			m, cmd = m.RemoveRow()
 
 		case key.Matches(msg, m.keys.Select):
-			m.selected = true
+			m.isEditing = true
 			cell := m.GetCurrentCell()
 			cmd = cell.Focus()
 
@@ -206,11 +289,8 @@ func (m Model) handleTableNavigation(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = tea.Quit
 
 		case key.Matches(msg, m.keys.Undo):
-			m.Undo()
-			_, cmd = m.Reload()
+			m, cmd = m.Undo()
 		}
-	case MsgData:
-		m.data = msg.data
 	case MsgError:
 		if msg.err != nil {
 			m.message = msg.err.Error()
@@ -218,8 +298,6 @@ func (m Model) handleTableNavigation(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.message = ""
 		}
-	case MsgReload:
-		m, cmd = m.Reload()
 	}
 	return m, cmd
 }
@@ -232,100 +310,86 @@ func clearMessage() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if m.selected {
+	if m.isEditing {
 		return m.handleEditing(msg)
 	}
 	return m.handleTableNavigation(msg)
 }
 
 func (m Model) View() string {
-	format := " %-6s %-6s %-40s"
-	s := HeaderBorderStyle.Render(
-		fmt.Sprintf(
-			format,
-			CellBorderStyle.Render(lipgloss.PlaceHorizontal(6, lipgloss.Left, "Start")),
-			CellBorderStyle.Render(lipgloss.PlaceHorizontal(6, lipgloss.Left, "End")),
-			"Description",
-		),
-	)
+
+	// Make header
+	headerCols := make([]string, len(COLUMNS))
+	for i, column := range COLUMNS {
+		if i < len(COLUMNS)-1 {
+			headerCols[i] = CellStyle.Render(lipgloss.PlaceHorizontal(column.Width+1, lipgloss.Left, column.Label))
+		} else {
+			headerCols[i] = CellStyle.BorderRight(false).Render(lipgloss.PlaceHorizontal(column.Width+1, lipgloss.Left, column.Label))
+		}
+	}
+	headerString := TableBorderStyle.BorderBottom(true).Render(strings.Join(headerCols, ""))
 
 	// Iterate over our choices
-	ts := ""
+	dataString := ""
 	for i, row := range m.data {
 		// format row
 		formattedRow := make([]string, row.GetWidth())
 		for j, cell := range row.cells {
-			// Determine the style of the cell
-			var style TextStyle
-			if j < 2 {
-				style = TimeStyle
+			if i == m.cursor.GetRow() && j == m.cursor.GetCol() {
+				cell.highlight = true
 			} else {
-				style = DescStyle
-			}
-			if cell.Err != nil && len(cell.Value()) == cell.CharLimit {
-				cell.TextStyle = ErrStyle
-			} else if i == m.cursor.GetRow() && j == m.cursor.GetCol() {
-				if cell.Focused() {
-					cell.TextStyle = style.Focus
-				} else {
-					cell.TextStyle = style.Highlight
-				}
-			} else {
-				cell.TextStyle = style.Base
-			}
-			// Determine the value to show in the cell.
-			// Cells that are empty and not focused show a dimmed placeholder
-			value := cell.Value()
-			if value == "" && !cell.Focused() {
-				value = cell.Placeholder
-				cell.TextStyle = cell.TextStyle.Faint(true)
+				cell.highlight = false
 			}
 			// Note: pad by one to make room for color escape chars.
-			formattedRow[j] = lipgloss.PlaceHorizontal(cell.Width+1, lipgloss.Left, cell.TextStyle.Render(value))
+			cellStr := lipgloss.PlaceHorizontal(COLUMNS[j].Width, lipgloss.Left, cell.TextStyle.Render(cell.View()))
+			if j < len(row.cells)-1 {
+				formattedRow[j] = CellStyle.Render(cellStr)
+			} else {
+				formattedRow[j] = CellStyle.BorderRight(false).Render(cellStr)
+			}
 		}
-		// Render the row
-		ts += fmt.Sprintf(format+"\n", CellBorderStyle.Render(formattedRow[0]), CellBorderStyle.Render(formattedRow[1]), formattedRow[2])
+		dataString += strings.Join(formattedRow, "") + "\n"
 	}
 
 	// Trim trailing newline
-	if len(ts) > 0 {
-		ts = ts[:len(ts)-1]
+	if len(dataString) > 0 {
+		dataString = dataString[:len(dataString)-1]
 	}
 
+	tableString := TableBorderStyle.Render(headerString + "\n" + dataString)
+
+	// Error message
+	errString := ErrStyle.Render(m.message)
+
+	var helpString string
+	if !m.isEditing {
+		helpString = lipgloss.NewStyle().PaddingLeft(1).Render(m.help.View(m.keys))
+	} else {
+		m.help.ShowAll = false
+		helpString = m.help.Styles.ShortDesc.PaddingLeft(1).Render(m.help.View(m.editKeys))
+	}
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		lipgloss.JoinVertical(
 			lipgloss.Center,
 			"",
 			m.date.Format("Mon 02-Jan-2006"),
-			TableBorderStyle.Render(s+"\n"+ts),
+			tableString,
 		),
-		ErrStyle.Render(m.message),
-		m.help.View(m.keys),
+		errString,
+		helpString,
 	)
 }
 
 // Commands + messages
-// MsgData is used to send data from the backend to the model.
-type MsgData struct {
-	data []Row
-}
-
 // MsgError is used to report errors for the application to handle.
 type MsgError struct {
 	err error
 }
 
-// MsgReload is a message to reload the data from the backend.
-type MsgReload struct{}
-
-type MsgRemoveRow struct {
-	rowIndex int
-}
-
 // Add a new row to the table.
-func (m *Model) AddRow() {
-	row := newRowInternal(m.date, "", "", "")
+func (m Model) AddRow() (Model, tea.Cmd) {
+	row := NewRow(m.date)
 
 	// If the current row has an end time, copy it as the start time of the new row.
 	i := m.cursor.GetRow()
@@ -334,7 +398,7 @@ func (m *Model) AddRow() {
 		m.data = append(m.data, row)
 		m.cursor.AddRow()
 		m.cursor.Down()
-		return
+		return m, nil
 	}
 
 	currentRow := m.data[i]
@@ -345,8 +409,9 @@ func (m *Model) AddRow() {
 	// If there is a next row and it has a start time, copy it as the end time of the new row.
 	if i < len(m.data)-1 {
 		nextRow := m.data[i+1]
-		if nextRow.cells[0].Value() != "" {
-			row.cells[1].SetValue(row.cells[0].Value())
+		nextRowStart := nextRow.cells[0].Value()
+		if nextRowStart != "" && nextRowStart != row.cells[0].Value() {
+			row.cells[1].SetValue(nextRowStart)
 		}
 	}
 
@@ -360,104 +425,93 @@ func (m *Model) AddRow() {
 	)
 
 	m.cursor.AddRow()
-}
-
-// Commit the given row to the Timewarrior database via the backend.
-func (m *Model) CommitRow(row Row) tea.Cmd {
-	return func() tea.Msg {
-		err := row.Commit(m.backend)
-		if err != nil {
-			return MsgError{err}
-		}
-		return MsgReload{}
-	}
+	m.cursor.Down()
+	return m, nil
 }
 
 // Reload the data from the backend and update the cursor position.
 func (m Model) Reload() (Model, tea.Cmd) {
-	cmd := func() tea.Msg {
-		err := m.loadData()
-		if err != nil {
-			return MsgError{fmt.Errorf("loading data: %w", err)}
-		}
-		m.cursor.nrows = len(m.data)
+	err := m.loadData()
+	if err != nil {
+		return m.setError(fmt.Errorf("loading data: %w", err))
+	}
+	m.cursor.nrows = len(m.data)
 
-		if len(m.data) == 0 {
-			m.cursor.pos.row = 0
-		} else {
-			// If cursor is beyond the last row, move it to the last row.
-			for m.cursor.GetRow() >= len(m.data) {
-				m.cursor.Up()
+	if len(m.data) == 0 {
+		m.cursor.pos.row = 0
+	} else {
+		// If cursor is beyond the last row, move it to the last row.
+		for m.cursor.GetRow() >= len(m.data) {
+			m.cursor.Up()
+		}
+	}
+	return m, nil
+}
+
+// Remove the current row/interval from the Timewarrior database.
+func (m Model) RemoveRow() (Model, tea.Cmd) {
+	i := m.cursor.GetRow()
+	if len(m.data) > 0 {
+		reload := false
+		if m.data[i].Interval.ID > 0 {
+			err := m.backend.Delete(m.data[i].Interval.ID)
+			if err != nil {
+				return m.setError(err)
 			}
+			reload = true
 		}
-		return MsgData{
-			data: m.data,
+		m.data = append(m.data[:i], m.data[i+1:]...)
+		m.cursor.RemoveRow()
+		for m.cursor.GetRow() >= len(m.data) {
+			m.cursor.Up()
 		}
+		if reload {
+			return m.Reload()
+		}
+	}
+	return m, nil
+}
+
+func (m Model) setError(err error) (Model, tea.Cmd) {
+	var cmd tea.Cmd
+	if err != nil {
+		m.message = err.Error()
+		cmd = clearMessage()
+	} else {
+		m.message = ""
 	}
 	return m, cmd
 }
 
-// Remove the current row/interval from the Timewarrior database.
-func (m *Model) RemoveRow() {
-	// Get the current row
-	i := m.cursor.GetRow()
-	if len(m.data) == 0 {
-		return
-	}
-
-	// If the current interval exists in the Timewarrior database, delete it.
-	if m.data[i].Interval.ID > 0 {
-		err := m.backend.Delete(m.data[i].Interval.ID)
-		if err != nil {
-			m.message = fmt.Errorf("deleting interval: %w", err).Error()
-		}
-	}
-}
-
 // Undo the last action taken against the Timewarrior database via the backend.
-func (m *Model) Undo() {
+func (m *Model) Undo() (Model, tea.Cmd) {
 	err := m.backend.Undo()
 	if err != nil {
-		m.message = fmt.Errorf("undo error: %w", err).Error()
+		return m.setError(fmt.Errorf("undo error: %w", err))
 	}
+	return m.Reload()
 }
 
 // Update the given row in the Timewarrior database via the backend.
 func (m Model) UpdateRow(row Row) (Model, tea.Cmd) {
 	// Get current cursor position
 	j := m.cursor.GetCol()
-	cmd := func() tea.Msg {
-		// If current interval does not exist in Timewarrior, write it
-		if row.Interval.ID == 0 {
-			if row.Ready() {
-				err := row.Commit(m.backend)
-				if err != nil {
-					return MsgError{err}
-				}
-				return MsgReload{}
-			} else {
-				return nil
+	// If current interval does not exist in Timewarrior, write it
+	if row.Interval.ID == 0 {
+		if row.Ready() {
+			err := row.Commit(m.backend)
+			if err != nil {
+				return m.setError(fmt.Errorf("commit error: %w", err))
 			}
+			return m.Reload()
 		}
-
-		var err error
-		switch j {
-		case 0:
-			err = row.UpdateStart(m.backend)
-		case 1:
-			err = row.UpdateEnd(m.backend)
-		case 2:
-			err = row.UpdateTags(m.backend)
-		}
-
+	} else {
+		err := COLUMNS[j].Action(&row, m.backend)
 		if err != nil {
-			return MsgError{
-				fmt.Errorf("modify error: %w", err),
-			}
+			return m.setError(fmt.Errorf("modify error: %w", err))
 		}
-		return MsgReload{}
 	}
-	return m, cmd
+	return m, nil
 }
 
 // Row
@@ -468,53 +522,34 @@ type Row struct {
 	date  time.Time
 }
 
-// Create a new Row from a Timewarrior interval.
-func NewRow(interval timew.Interval) Row {
-	var startTime, endTime, tags string
-	startTime = interval.Start.Local().TimeString()
-	if interval.End != nil {
-		endTime = interval.End.Local().TimeString()
+func NewRow(date time.Time) Row {
+	cells := make([]cell, len(COLUMNS))
+	interval := timew.Interval{} // dummy
+	for i, column := range COLUMNS {
+		cells[i] = newCell(column.Get(interval), column.Type, column.Width)
 	}
-	tags = strings.Join(interval.Tags, ",")
 	return Row{
-		Interval: interval,
-		cells: []cell{
-			newCell(startTime, true),
-			newCell(endTime, true),
-			newCell(tags, false),
+		// OK for these to be nil because they'll be set before they're ever committed
+		Interval: timew.Interval{
+			Start: &timew.Datetime{},
+			End:   &timew.Datetime{},
+			Tags:  []string{},
 		},
-		date: interval.Start.Time,
+		cells: cells,
+		date:  date,
 	}
 }
 
-func newRowInternal(date time.Time, startTime string, endTime string, desc string) Row {
-	startDatetime, _ := timew.NewDatetimeFromString(
-		fmt.Sprintf(
-			"%s%s00",
-			date.Format("20060102"),
-			strings.ReplaceAll(startTime, ":", ""),
-		),
-	)
-	endDatetime, _ := timew.NewDatetimeFromString(
-		fmt.Sprintf(
-			"%s%s00",
-			date.Format("20060102"),
-			strings.ReplaceAll(endTime, ":", ""),
-		),
-	)
-	interval := timew.Interval{
-		Start: &startDatetime,
-		End:   &endDatetime,
-		Tags:  []string{""},
+// Create a new Row from a Timewarrior interval.
+func NewRowFromInterval(interval timew.Interval) Row {
+	cells := make([]cell, len(COLUMNS))
+	for i, column := range COLUMNS {
+		cells[i] = newCell(column.Get(interval), column.Type, column.Width)
 	}
 	return Row{
 		Interval: interval,
-		cells: []cell{
-			newCell(startTime, true),
-			newCell(endTime, true),
-			newCell(desc, false),
-		},
-		date: date,
+		cells:    cells,
+		date:     interval.Start.Time,
 	}
 }
 
@@ -535,6 +570,32 @@ func (r *Row) Commit(backend TimewarriorBackend) error {
 	if err != nil {
 		return fmt.Errorf("writing to timewarrior: %w", err)
 	}
+
+	annotation := r.cells[3].Value()
+	if len(annotation) > 0 {
+		// Only way to annotate is to get all the data again and find the ID of
+		// the new interval.
+		intervals, err := backend.Export(r.date.Format("2006-01-02"))
+		if err != nil {
+			return fmt.Errorf("reading timewarrior datat: %w", err)
+		}
+
+		var id int
+		for _, interval := range intervals {
+			if r.Interval.Equal(interval) {
+				id = interval.ID
+			}
+		}
+		if id == 0 {
+			return fmt.Errorf("cannot find id of newly created interval")
+		}
+
+		err = backend.Annotate(id, annotation)
+		if err != nil {
+			return fmt.Errorf("creating annotation: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -588,6 +649,17 @@ func (r *Row) UpdateTags(backend TimewarriorBackend) error {
 	return nil
 }
 
+func (r *Row) UpdateAnnotation(backend TimewarriorBackend) error {
+	r.Interval.Annotation = r.cells[3].Value()
+
+	// Commit to Timewarrior
+	err := backend.Annotate(r.Interval.ID, r.Interval.Annotation)
+	if err != nil {
+		return fmt.Errorf("writing to timewarrior: %w", err)
+	}
+	return nil
+}
+
 func (r *Row) GetTags() []string {
 	tags := strings.Split(r.cells[2].Value(), ",")
 	for i, tag := range tags {
@@ -602,7 +674,12 @@ func (r Row) GetWidth() int {
 
 // Returns true if a Row is ready to commit
 func (r Row) Ready() bool {
-	return r.cells[0].Err == nil && r.cells[1].Err == nil && r.cells[2].Err == nil
+	for _, cell := range r.cells[:len(r.cells)-1] {
+		if cell.Err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 func (r *Row) setTimeInInterval(date time.Time, timeStr string, destination *timew.Datetime) error {
@@ -633,10 +710,21 @@ func (r *Row) setTagsInInterval(tagStr string) {
 // Cell represents a single editable text field in the table.
 type cell struct {
 	textinput.Model
+
+	BaseStyle      lipgloss.Style
+	HighlightStyle lipgloss.Style
+	FocusStyle     lipgloss.Style
+	highlight      bool
+}
+
+func (c cell) WithHighlight(highlight bool) cell {
+	c.highlight = highlight
+	return c
 }
 
 func (c cell) WithModel(m textinput.Model) cell {
-	return cell{m}
+	c.Model = m
+	return c
 }
 
 func (c cell) Update(msg tea.Msg) (cell, tea.Cmd) {
@@ -644,10 +732,23 @@ func (c cell) Update(msg tea.Msg) (cell, tea.Cmd) {
 	return c.WithModel(newModel), cmd
 }
 
-func newCell(value string, isTime bool) cell {
+func (c cell) View() string {
+	c.PlaceholderStyle = c.BaseStyle.Faint(true)
+	if c.highlight {
+		c.TextStyle = c.HighlightStyle
+		c.PlaceholderStyle = c.HighlightStyle
+	} else if c.Focused() {
+		c.TextStyle = c.FocusStyle
+	} else {
+		c.TextStyle = c.BaseStyle
+	}
+	return c.Model.View()
+}
+
+func newCell(value string, fieldType int, width int) cell {
 	m := textinput.New()
 	m.Prompt = ""
-	if isTime {
+	if fieldType == FieldTime {
 		m.Placeholder = "HH:MM"
 		m.CharLimit = 5
 		m.Width = 5
@@ -659,8 +760,8 @@ func newCell(value string, isTime bool) cell {
 			return nil
 		}
 	} else {
-		m.CharLimit = 40
-		m.Width = 40
+		// m.CharLimit = 40
+		m.Width = width
 		m.Placeholder = "none"
 		m.Validate = func(text string) error {
 			if len(text) == 0 {
@@ -670,7 +771,13 @@ func newCell(value string, isTime bool) cell {
 		}
 	}
 	m.SetValue(value)
-	m.Cursor.Blink = false
-	m.Cursor.SetMode(curse.CursorHide)
-	return cell{m}
+	m.Cursor.Blink = true
+	m.Cursor.SetMode(curse.CursorBlink)
+	return cell{
+		Model:          m,
+		BaseStyle:      BaseStyle,
+		FocusStyle:     FocusStyle,
+		HighlightStyle: HighlightStyle,
+		highlight:      false,
+	}
 }

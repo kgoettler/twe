@@ -25,13 +25,18 @@ echo "...done"
 
 echo "bootstrapping test data..."
 # Create test data
-for day in {1..7}; do
-    day=$(printf '%02d' $day)
-    timew track "202401${day}T000000" - "202401${day}T060000" "Sleep" > /dev/null
-    timew track "202401${day}T060000" - "202401${day}T070000" "Shower" > /dev/null
-    timew track "202401${day}T070000" - "202401${day}T080000" "Breakfast" > /dev/null
-    timew track "202401${day}T080000" - "202401${day}T090000" "Commuting to Work" > /dev/null
-    timew track "202401${day}T090000" - "202401${day}T170000" "Work" > /dev/null
+# 2025-12 for VHS demos (because it's a nice and round and starts on a Monday)
+# 2026-01 for all other tests (because it's nice and round for writing)
+MONTHS=("202601" "202512")
+for month in "${MONTHS[@]}"; do
+    for day in {1..7}; do
+        day=$(printf '%02d' $day)
+        timew track "${month}${day}T000000" - "${month}${day}T060000" "Sleep" > /dev/null
+        timew track "${month}${day}T060000" - "${month}${day}T070000" "Shower" > /dev/null
+        timew track "${month}${day}T070000" - "${month}${day}T080000" "Breakfast" > /dev/null
+        timew track "${month}${day}T080000" - "${month}${day}T090000" "Commuting to Work" > /dev/null
+        timew track "${month}${day}T090000" - "${month}${day}T170000" "Work" > /dev/null
+    done
 done
 echo "...done"
 

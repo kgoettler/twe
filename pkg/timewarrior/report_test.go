@@ -39,7 +39,7 @@ func (suite *TWReportSuite) TestNewTimewarrior() {
 func (suite *TWReportSuite) TestLast() {
 	last, err := suite.tw.Last()
 	suite.NoError(err)
-	expected, err := NewDatetimeFromString("20240106T120000Z")
+	expected, err := NewDatetimeFromString("20260106T120000Z")
 	suite.NoError(err)
 	suite.Equal(expected, last)
 }

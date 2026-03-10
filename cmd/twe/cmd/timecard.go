@@ -70,6 +70,24 @@ var timecardCmd = &cobra.Command{
 
 func init() {
 	RootCmd.AddCommand(timecardCmd)
+	timecardCmd.Flags().IntVar(
+		&timecardOptions.Increment,
+		"increment",
+		6,
+		"Increment up to which each duration will be rounded (in minutes)",
+	)
+	timecardCmd.Flags().BoolVar(
+		&timecardOptions.IncludeTotalRow,
+		"total-row",
+		false,
+		"Include row with daily totals",
+	)
+	timecardCmd.Flags().BoolVar(
+		&timecardOptions.IncludeTotalCol,
+		"total-col",
+		false,
+		"Include column with tag totals",
+	)
 	timecardCmd.Flags().StringVar(
 		&timecardOptions.OutputFormat,
 		"format",

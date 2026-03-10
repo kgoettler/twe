@@ -2,6 +2,40 @@ package edit
 
 import "github.com/charmbracelet/bubbles/key"
 
+type editModeKeys struct {
+	Left  key.Binding
+	Right key.Binding
+	Esc   key.Binding
+	Quit  key.Binding
+}
+
+func (k editModeKeys) ShortHelp() []key.Binding {
+	return []key.Binding{k.Left, k.Right, k.Esc, k.Quit}
+}
+
+func (k editModeKeys) FullHelp() [][]key.Binding {
+	return nil
+}
+
+var editKeys = editModeKeys{
+	Left: key.NewBinding(
+		key.WithKeys("shift+tab"),
+		key.WithHelp("shift+tab", "left"),
+	),
+	Right: key.NewBinding(
+		key.WithKeys("tab"),
+		key.WithHelp("tab", "right"),
+	),
+	Esc: key.NewBinding(
+		key.WithKeys("esc", "enter"),
+		key.WithHelp("esc/enter", "esc"),
+	),
+	Quit: key.NewBinding(
+		key.WithKeys("ctrl+c"),
+		key.WithHelp("ctrl+c", "quit"),
+	),
+}
+
 type keyMap struct {
 	Up     key.Binding
 	Down   key.Binding

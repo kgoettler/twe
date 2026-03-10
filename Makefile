@@ -37,3 +37,12 @@ uninstall:
 
 test: 
 	TIMEWARRIORDB=$(PWD)/pkg/timewarrior/testdata/db TZ=America/New_York go test -v ./...
+
+img/timecard.gif: img/timecard.tape
+	vhs $< -o $@
+
+img/edit.gif: img/edit.tape
+	timew delete $$(timew export 2026-01-01 | jq -r '.[].id' | sed 's/^/@/') || echo "Already deleted"
+	TWE_EDIT_DATE=2026-01-01 vhs $< -o $@
+
+vhs: img/timecard.gif img/edit.gif

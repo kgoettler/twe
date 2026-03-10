@@ -5,7 +5,6 @@ Copyright © 2024 Ken Goettler <goettlek@gmail.com>
 package cmd
 
 import (
-	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -26,7 +25,7 @@ var editCmd = &cobra.Command{
 		// Setup logger
 		var f *os.File
 		var err error
-		if len(os.Getenv("DEBUG")) > 0 {
+		if len(os.Getenv("TWE_DEBUG")) > 0 {
 			f, err = tea.LogToFile("debug.log", "debug")
 			if err != nil {
 				handleError(cmd, "configuring logger: %v", err)
@@ -38,9 +37,15 @@ var editCmd = &cobra.Command{
 		cli := timew.NewCLI()
 
 		// Parse date argument (if provided)
-		var date time.Time
+		var dateString string
 		if len(args) > 0 {
-			date, err = timew.ConvertDateStringToTime(time.Now(), strings.ToLower(args[0]))
+			dateString = args[0]
+		} else if len(os.Getenv("TWE_EDIT_DATE")) > 0 {
+			dateString = os.Getenv("TWE_EDIT_DATE")
+		}
+		var date time.Time
+		if len(dateString) > 0 {
+			date, err = timew.ConvertDateStringToTime(time.Now(), strings.ToLower(dateString))
 			if err != nil {
 				handleError(cmd, "input date '%s' is not a valid date", args[0])
 			}
@@ -49,15 +54,11 @@ var editCmd = &cobra.Command{
 		}
 
 		// Setup application model
-		m, err := edit.NewModel(&cli, date)
+		m, err := edit.NewModel(&cli, date, f)
 		if err != nil {
 			handleError(cmd, "initializing application: %v", err)
 			os.Exit(1)
 		}
-		if f != nil {
-			m.Logfile = f
-		}
-		fmt.Fprintf(f, "Test\n")
 
 		// Run application
 		p := tea.NewProgram(m)

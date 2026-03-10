@@ -30,6 +30,92 @@ type overlapResult struct {
 	amount time.Duration
 }
 
+func (suite *IntervalSuite) TestIntervalFromString_Closed() {
+	value := `inc 20260101T000000Z - 20260101T010000Z # Test "Code Review"`
+	interval, err := NewIntervalFromString(value)
+	suite.NoError(err)
+	suite.Equal(*interval.Start, Datetime{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)})
+	suite.Equal(*interval.End, Datetime{time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC)})
+	suite.Contains(interval.Tags, "Test", "Code Review")
+	suite.Empty(interval.Annotation)
+}
+
+func (suite *IntervalSuite) TestIntervalFromString_Closed_WithAnnotation() {
+	value := `inc 20260101T000000Z - 20260101T010000Z # Test "Code Review" # "This is \"my annotation\" you see"`
+	interval, err := NewIntervalFromString(value)
+	suite.NoError(err)
+	suite.Equal(*interval.Start, Datetime{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)})
+	suite.Equal(*interval.End, Datetime{time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC)})
+	suite.Contains(interval.Tags, "Test", "Code Review")
+	suite.Equal("This is \"my annotation\" you see", interval.Annotation)
+}
+
+func (suite *IntervalSuite) TestIntervalFromString_Open() {
+	value := `inc 20260101T000000Z # Test "Code Review"`
+	interval, err := NewIntervalFromString(value)
+	suite.NoError(err)
+	suite.Equal(*interval.Start, Datetime{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)})
+	suite.Nil(interval.End)
+	suite.Contains(interval.Tags, "Test", "Code Review")
+	suite.Empty(interval.Annotation)
+}
+
+func (suite *IntervalSuite) TestIntervalFromString_Open_WithAnnotation() {
+	value := `inc 20260101T000000Z # Test "Code Review" # "This is \"my annotation\" you see"`
+	interval, err := NewIntervalFromString(value)
+	suite.NoError(err)
+	suite.Equal(*interval.Start, Datetime{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)})
+	suite.Nil(interval.End)
+	suite.Contains(interval.Tags, "Test", "Code Review")
+	suite.Equal("This is \"my annotation\" you see", interval.Annotation)
+}
+
+func (suite *IntervalSuite) TestLocalize() {
+	value := `inc 20260101T000000Z - 20260101T010000Z # Test "Code Review"`
+	interval, err := NewIntervalFromString(value)
+	suite.NoError(err)
+	localInterval := interval.Localize()
+	// Tests run in EST (America/New_York)
+	suite.Equal(*localInterval.Start, Datetime{time.Date(2025, 12, 31, 19, 0, 0, 0, time.Local)})
+	suite.Equal(*localInterval.End, Datetime{time.Date(2025, 12, 31, 20, 0, 0, 0, time.Local)})
+}
+
+func (suite *IntervalSuite) TestContains_True() {
+	interval, err := NewIntervalFromString(`inc 20260101T000000Z - 20260101T010000Z # Test "Code Review"`)
+	suite.NoError(err)
+	res := interval.Contains(time.Date(2026, 1, 1, 0, 30, 0, 0, time.UTC))
+	suite.True(res)
+}
+
+func (suite *IntervalSuite) TestContains_False() {
+	interval, err := NewIntervalFromString(`inc 20260101T000000Z - 20260101T010000Z # Test "Code Review"`)
+	suite.NoError(err)
+	res := interval.Contains(time.Date(2026, 1, 1, 1, 30, 0, 0, time.UTC))
+	suite.False(res)
+}
+
+func (suite *IntervalSuite) TestContains_True_MultiZone() {
+	interval, err := NewIntervalFromString(`inc 20260101T000000Z - 20260101T010000Z # Test "Code Review"`)
+	suite.NoError(err)
+	res := interval.Contains(time.Date(2025, 12, 31, 19, 30, 0, 0, time.Local))
+	suite.True(res)
+}
+
+func (suite *IntervalSuite) TestIsOpen_True() {
+	value := `inc 20260101T000000Z # Test "Code Review"`
+	interval, err := NewIntervalFromString(value)
+	suite.NoError(err)
+	res := interval.IsOpen()
+	suite.True(res)
+}
+
+func (suite *IntervalSuite) TestIsOpen_False() {
+	interval, err := NewIntervalFromString(`inc 20260101T000000Z - 20260101T010000Z # Test "Code Review"`)
+	suite.NoError(err)
+	res := interval.IsOpen()
+	suite.False(res)
+}
+
 func (c intervalCase) getIntervals() []Interval {
 	// Parse the string into a time.Time struct
 	parsedTimes := make([]*Datetime, len(c.times))
@@ -57,100 +143,100 @@ func (c intervalCase) getIntervals() []Interval {
 	return intervals
 }
 
-func (suite *IntervalSuite) TestInterval_Overlaps_True() {
+func (suite *IntervalSuite) TestOverlaps() {
 	cases := []intervalCase{
 		{
 			[]string{
-				"20240101T060000Z", "20240101T090000Z",
-				"20240101T060000Z", "20240101T090000Z",
+				"20260101T060000Z", "20260101T090000Z",
+				"20260101T060000Z", "20260101T090000Z",
 			},
 			[]string{},
 			overlapResult{true, time.Hour * 3},
 		},
 		{
 			[]string{
-				"20240101T060000Z", "20240101T090000Z",
-				"20240101T070000Z", "20240101T080000Z",
+				"20260101T060000Z", "20260101T090000Z",
+				"20260101T070000Z", "20260101T080000Z",
 			},
 			[]string{},
 			overlapResult{true, time.Hour * 1},
 		},
 		{
 			[]string{
-				"20240101T070000Z", "20240101T080000Z",
-				"20240101T060000Z", "20240101T090000Z",
+				"20260101T070000Z", "20260101T080000Z",
+				"20260101T060000Z", "20260101T090000Z",
 			},
 			[]string{},
 			overlapResult{true, time.Hour * 1},
 		},
 		{
 			[]string{
-				"20240101T060000Z", "20240101T090000Z",
-				"20240101T070000Z", "20240101T100000Z",
+				"20260101T060000Z", "20260101T090000Z",
+				"20260101T070000Z", "20260101T100000Z",
 			},
 			[]string{},
 			overlapResult{true, time.Hour * 2},
 		},
 		{
 			[]string{
-				"20240101T070000Z", "20240101T100000Z",
-				"20240101T060000Z", "20240101T090000Z",
+				"20260101T070000Z", "20260101T100000Z",
+				"20260101T060000Z", "20260101T090000Z",
 			},
 			[]string{},
 			overlapResult{true, time.Hour * 2},
 		},
 		{
 			[]string{
-				"20240101T060000Z", "",
-				"20240101T070000Z", "20240101T080000Z",
+				"20260101T060000Z", "",
+				"20260101T070000Z", "20260101T080000Z",
 			},
 			[]string{},
 			overlapResult{true, time.Hour * 1},
 		},
 		{
 			[]string{
-				"20240101T070000Z", "20240101T080000Z",
-				"20240101T060000Z", "",
+				"20260101T070000Z", "20260101T080000Z",
+				"20260101T060000Z", "",
 			},
 			[]string{},
 			overlapResult{true, time.Hour * 1},
 		},
 		{
 			[]string{
-				"20240101T070000Z", "",
-				"20240101T060000Z", "20240101T080000Z",
+				"20260101T070000Z", "",
+				"20260101T060000Z", "20260101T080000Z",
 			},
 			[]string{},
 			overlapResult{true, time.Hour * 1},
 		},
 		{
 			[]string{
-				"20240101T070000Z", "",
-				"20240101T060000Z", "20240101T080000Z",
+				"20260101T070000Z", "",
+				"20260101T060000Z", "20260101T080000Z",
 			},
 			[]string{},
 			overlapResult{true, time.Hour * 1},
 		},
 		{
 			[]string{
-				"20240101T060000Z", "",
-				"20240101T070000Z", "",
+				"20260101T060000Z", "",
+				"20260101T070000Z", "",
 			},
 			[]string{},
 			overlapResult{true, 0},
 		},
 		{
 			[]string{
-				"20240101T060000Z", "20240101T070000Z",
-				"20240101T070000Z", "20240101T080000Z",
+				"20260101T060000Z", "20260101T070000Z",
+				"20260101T070000Z", "20260101T080000Z",
 			},
 			[]string{},
 			overlapResult{false, 0},
 		},
 		{
 			[]string{
-				"20240101T070000Z", "20240101T080000Z",
-				"20240101T060000Z", "20240101T070000Z",
+				"20260101T070000Z", "20260101T080000Z",
+				"20260101T060000Z", "20260101T070000Z",
 			},
 			[]string{},
 			overlapResult{false, 0},
@@ -169,20 +255,20 @@ func (suite *IntervalSuite) TestInterval_Overlaps_True() {
 	}
 }
 
-func (suite *IntervalSuite) TestInterval_StartsBefore() {
+func (suite *IntervalSuite) TestStartsBefore() {
 	cases := []intervalCase{
 		{
 			[]string{
-				"20240101T060000Z", "20240101T070000Z",
-				"20240101T070000Z", "20240101T080000Z",
+				"20260101T060000Z", "20260101T070000Z",
+				"20260101T070000Z", "20260101T080000Z",
 			},
 			[]string{},
 			true,
 		},
 		{
 			[]string{
-				"20240101T070000Z", "20240101T080000Z",
-				"20240101T060000Z", "20240101T070000Z",
+				"20260101T070000Z", "20260101T080000Z",
+				"20260101T060000Z", "20260101T070000Z",
 			},
 			[]string{},
 			false,
@@ -194,25 +280,25 @@ func (suite *IntervalSuite) TestInterval_StartsBefore() {
 	}
 }
 
-func (suite *IntervalSuite) TestInterval_Parse() {
+func (suite *IntervalSuite) TestUnmarshal() {
 	var interval Interval
 	data := []byte(`{"id":2,"start":"20221206T010000Z","end":"20221206T040000Z","tags":["Football"]}`)
 	err := json.Unmarshal(data, &interval)
 	suite.Require().NoError(err)
 }
 
-func (suite *IntervalSuite) TestInterval_Closed() {
+func (suite *IntervalSuite) TestIsClosed() {
 	cases := []intervalCase{
 		{
 			[]string{
-				"20240101T060000Z", "",
+				"20260101T060000Z", "",
 			},
 			[]string{"golang"},
 			false,
 		},
 		{
 			[]string{
-				"20240101T060000Z", "20240101T090000Z",
+				"20260101T060000Z", "20260101T090000Z",
 			},
 			[]string{"golang"},
 			true,
@@ -226,28 +312,28 @@ func (suite *IntervalSuite) TestInterval_Closed() {
 	}
 }
 
-func (suite *IntervalSuite) TestInterval_DatabaseString() {
+func (suite *IntervalSuite) TestDatabaseString() {
 	cases := []intervalCase{
 		{
 			[]string{
-				"20240101T060000Z", "",
+				"20260101T060000Z", "",
 			},
 			[]string{"golang"},
-			`inc 20240101T060000Z # golang`,
+			`inc 20260101T060000Z # golang`,
 		},
 		{
 			[]string{
-				"20240101T060000Z", "20240101T090000Z",
+				"20260101T060000Z", "20260101T090000Z",
 			},
 			[]string{"golang"},
-			`inc 20240101T060000Z - 20240101T090000Z # golang`,
+			`inc 20260101T060000Z - 20260101T090000Z # golang`,
 		},
 		{
 			[]string{
-				"20240101T060000Z", "20240101T090000Z",
+				"20260101T060000Z", "20260101T090000Z",
 			},
 			[]string{"golang", "golang time", "foo"},
-			`inc 20240101T060000Z - 20240101T090000Z # golang "golang time" foo`,
+			`inc 20260101T060000Z - 20260101T090000Z # golang "golang time" foo`,
 		},
 	}
 	for _, c := range cases {
@@ -264,4 +350,75 @@ func (suite *IntervalSuite) TestDatetime_Local() {
 	local := date.Local()
 	suite.Equal("09:00", date.TimeString())
 	suite.Equal("04:00", local.TimeString())
+}
+
+func (suite *IntervalSuite) TestIntervalEqual() {
+	testCases := []struct {
+		name  string
+		left  Interval
+		right Interval
+		equal bool
+	}{
+		{
+			name:  "identical intervals (all fields)",
+			left:  Interval{Start: &Datetime{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}, End: &Datetime{time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC)}, Tags: []string{"foo", "bar"}, Annotation: "note"},
+			right: Interval{Start: &Datetime{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}, End: &Datetime{time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC)}, Tags: []string{"foo", "bar"}, Annotation: "note"},
+			equal: true,
+		},
+		{
+			name:  "different start",
+			left:  Interval{Start: &Datetime{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}, End: &Datetime{time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC)}, Tags: []string{"foo"}},
+			right: Interval{Start: &Datetime{time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)}, End: &Datetime{time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC)}, Tags: []string{"foo"}},
+			equal: false,
+		},
+		{
+			name:  "different end",
+			left:  Interval{Start: &Datetime{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}, End: &Datetime{time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC)}, Tags: []string{"foo"}},
+			right: Interval{Start: &Datetime{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}, End: &Datetime{time.Date(2026, 1, 2, 1, 0, 0, 0, time.UTC)}, Tags: []string{"foo"}},
+			equal: false,
+		},
+		{
+			name:  "different tags",
+			left:  Interval{Start: &Datetime{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}, End: &Datetime{time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC)}, Tags: []string{"foo"}},
+			right: Interval{Start: &Datetime{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}, End: &Datetime{time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC)}, Tags: []string{"bar"}},
+			equal: false,
+		},
+		{
+			name:  "different annotation",
+			left:  Interval{Start: &Datetime{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}, End: &Datetime{time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC)}, Tags: []string{"foo"}, Annotation: "a"},
+			right: Interval{Start: &Datetime{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}, End: &Datetime{time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC)}, Tags: []string{"foo"}, Annotation: "b"},
+			equal: false,
+		},
+		{
+			name:  "nil start vs non-nil",
+			left:  Interval{Start: nil, End: &Datetime{time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC)}, Tags: []string{"foo"}},
+			right: Interval{Start: &Datetime{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}, End: &Datetime{time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC)}, Tags: []string{"foo"}},
+			equal: false,
+		},
+		{
+			name:  "nil end vs non-nil",
+			left:  Interval{Start: &Datetime{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}, End: nil, Tags: []string{"foo"}},
+			right: Interval{Start: &Datetime{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}, End: &Datetime{time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC)}, Tags: []string{"foo"}},
+			equal: false,
+		},
+		{
+			name:  "both nil start",
+			left:  Interval{Start: nil, End: &Datetime{time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC)}, Tags: []string{"foo"}},
+			right: Interval{Start: nil, End: &Datetime{time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC)}, Tags: []string{"foo"}},
+			equal: true,
+		},
+		{
+			name:  "both nil end",
+			left:  Interval{Start: &Datetime{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}, End: nil, Tags: []string{"foo"}},
+			right: Interval{Start: &Datetime{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}, End: nil, Tags: []string{"foo"}},
+			equal: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			eq := tc.left.Equal(tc.right)
+			suite.Equal(tc.equal, eq, "left: %#v, right: %#v", tc.left, tc.right)
+		})
+	}
 }

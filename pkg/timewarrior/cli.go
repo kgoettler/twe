@@ -40,6 +40,11 @@ func NewCLI() CLI {
 	}
 }
 
+func (cli *CLI) Annotate(id int, annotation string) error {
+	_, err := cli.runCommand("annotate", fmt.Sprintf("@%d", id), annotation)
+	return err
+}
+
 // Calls `timew export @<id>` and returns the result as an Interval.
 func (cli *CLI) GetIntervalByID(id int) (Interval, error) {
 	cmd := cli.buildCommand("export", fmt.Sprintf("@%d", id))
@@ -145,7 +150,7 @@ func (cli *CLI) Track(interval Interval) error {
 	err := cmd.Run()
 	if err != nil {
 		//nolint: lll // for debugging only right now
-		return fmt.Errorf("running `%s`: (%w)\nSTDOUT: %s\nSTDERR: %s", strings.Join(cmd.Args, " "), err, stdout.String(), stderr.String())
+		return err
 	}
 	return nil
 }

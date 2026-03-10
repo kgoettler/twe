@@ -25,6 +25,15 @@ type TimecardOptions struct {
 	Groups       []string
 	OutputFormat string
 	InputFile    string
+
+	// If true, includes a column for tag totals
+	IncludeTotalCol bool
+
+	// If true, includes a row for daily totals
+	IncludeTotalRow bool
+
+	// increment (in minutes) up to which each duration will be rounded.
+	Increment int
 }
 
 // TimecardData contains tabular timecard data.
@@ -42,6 +51,14 @@ type TimecardData struct {
 
 	// Contains daily totals of hours logged
 	totals timecardCol
+
+	// Contains tag-wise totals of hours logged
+	rowTotals map[string]time.Duration
+
+	// Options
+	options TimecardOptions
+
+	round func(d time.Duration) time.Duration
 }
 type timecardCol = map[time.Time]time.Duration
 
@@ -49,7 +66,7 @@ type timecardCol = map[time.Time]time.Duration
 func Run(tw *timew.Report, options TimecardOptions) (string, error) {
 	var err error
 
-	data, err := NewTimecardData(tw, options.Filters)
+	data, err := NewTimecardData(tw, options)
 	if err != nil {
 		return "", fmt.Errorf("generating data: %w", err)
 	}
@@ -68,26 +85,29 @@ func Run(tw *timew.Report, options TimecardOptions) (string, error) {
 	return dataString, nil
 }
 
-func NewTimecardData(tw *timew.Report, filters []string) (TimecardData, error) {
+func NewTimecardData(tw *timew.Report, options TimecardOptions) (TimecardData, error) {
 	// Localize intervals
 	intervals := localizeIntervals(tw.Intervals)
 
 	// Filter intervals
 	var err error
-	if len(filters) > 0 {
-		intervals, err = filterIntervals(intervals, filters)
+	if len(options.Filters) > 0 {
+		intervals, err = filterIntervals(intervals, options.Filters)
 		if err != nil {
 			return TimecardData{}, fmt.Errorf("filtering intervals: %w", err)
 		}
 	}
 
 	data := TimecardData{
-		data:   make(map[string]map[time.Time]time.Duration),
-		totals: make(map[time.Time]time.Duration),
+		data:      make(map[string]map[time.Time]time.Duration),
+		totals:    make(map[time.Time]time.Duration),
+		rowTotals: make(map[string]time.Duration),
+		options:   options,
+		round:     getRoundingFunc(options.Increment),
 	}
 
-	rows := []string{}
-	columns := []time.Time{}
+	// rows := []string{}
+	// columns := []time.Time{}
 	for _, interval := range intervals {
 		// Loop over each day this interval overlaps with, calculate the
 		// amount of overlap on that day, and add it to the data structure.
@@ -108,26 +128,19 @@ func NewTimecardData(tw *timew.Report, filters []string) (TimecardData, error) {
 			// overlapStart will be before overlapEnd until we've reached a day
 			// with which the interval no longer overlaps.
 			if overlapStart.Before(overlapEnd) {
-				duration := overlapEnd.Sub(overlapStart)
-				data.AddTotal(dateCur, duration)
+				duration := data.round(overlapEnd.Sub(overlapStart))
+				data.AddDateTotal(dateCur, duration)
 				for _, tag := range interval.Tags {
 					data.Add(tag, dateCur, duration)
-					if !slices.Contains(rows, tag) {
-						rows = append(rows, tag)
-					}
-					if !slices.Contains(columns, dateCur) {
-						columns = append(columns, dateCur)
-					}
+					data.AddTagTotal(tag, duration)
 				}
 			}
 			dateCur = dateCur.Add(Day)
 		}
 	}
 
-	slices.Sort(rows)
-	slices.SortFunc(columns, func(a, b time.Time) int { return a.Compare(b) })
-	data.rows = rows
-	data.columns = columns
+	slices.Sort(data.rows)
+	slices.SortFunc(data.columns, func(a, b time.Time) int { return a.Compare(b) })
 
 	if len(data.rows) == 0 && len(data.columns) == 0 {
 		return data, fmt.Errorf("no data in range %s - %s", tw.Config["temp.report.start"], tw.Config["temp.report.end"])
@@ -137,10 +150,11 @@ func NewTimecardData(tw *timew.Report, filters []string) (TimecardData, error) {
 }
 
 // Add time for the given tag + date
-func (td TimecardData) Add(tag string, date time.Time, duration time.Duration) time.Duration {
+func (td *TimecardData) Add(tag string, date time.Time, duration time.Duration) time.Duration {
 	_, ok := td.data[tag]
 	if !ok {
 		td.data[tag] = make(map[time.Time]time.Duration)
+		td.rows = append(td.rows, tag)
 	}
 	_, ok = td.data[tag][date]
 	if !ok {
@@ -148,11 +162,22 @@ func (td TimecardData) Add(tag string, date time.Time, duration time.Duration) t
 	}
 	td.data[tag][date] += duration
 
-	// TODO: update rowNames and colNames (if necessary)
+	if !slices.Contains(td.columns, date) {
+		td.columns = append(td.columns, date)
+	}
+
 	return td.data[tag][date]
 }
 
-func (td TimecardData) AddTotal(date time.Time, duration time.Duration) {
+func (td *TimecardData) AddTagTotal(tag string, duration time.Duration) {
+	_, ok := td.rowTotals[tag]
+	if !ok {
+		td.rowTotals[tag] = 0
+	}
+	td.rowTotals[tag] += duration
+}
+
+func (td *TimecardData) AddDateTotal(date time.Time, duration time.Duration) {
 	_, ok := td.totals[date]
 	if !ok {
 		td.totals[date] = duration
@@ -162,33 +187,68 @@ func (td TimecardData) AddTotal(date time.Time, duration time.Duration) {
 }
 
 func (td TimecardData) Rows() int {
-	return len(td.rows) + 1
+	// Tag rows + total row
+	var extra int
+	if td.options.IncludeTotalRow {
+		extra++
+	}
+	return len(td.rows) + extra
 }
 
 func (td TimecardData) Columns() int {
-	return len(td.columns) + 1
+	// Header column + date columns + total column
+	var extra int
+	if td.options.IncludeTotalCol {
+		extra++
+	}
+	return 1 + len(td.columns) + extra
+}
+
+func (td TimecardData) atHeaderColumn(row int) string {
+	rowN := td.Rows() - 1
+	if row == rowN && td.options.IncludeTotalRow {
+		return "TOTAL"
+	}
+	return td.rows[row]
+}
+
+func (td TimecardData) atTotalsColumn(row int) string {
+	if row == td.Rows()-1 && td.options.IncludeTotalRow {
+		return EmptyChar
+	}
+	rowName := td.rows[row]
+	return formatDurationDecimal(td.rowTotals[rowName])
+}
+
+func (td TimecardData) atTotalsRow(cell int) string {
+	if cell == td.Columns()-1 && td.options.IncludeTotalCol {
+		return EmptyChar
+	}
+	return formatDurationDecimal(td.totals[td.columns[cell-1]])
 }
 
 func (td TimecardData) At(row, cell int) string {
-	if cell == 0 {
-		if row == (td.Rows() - 1) {
-			return "TOTAL"
-		} else {
-			return td.rows[row]
-		}
+	col0 := 0
+	rowN := td.Rows() - 1
+	colN := td.Columns() - 1
+
+	if cell == col0 {
+		return td.atHeaderColumn(row)
 	}
-	var val time.Duration
-	var err error
-	if row == (td.Rows() - 1) {
-		val = td.totals[td.columns[cell-1]]
-		return formatDurationDecimal(val)
-	} else {
-		val, err = td.Get(td.rows[row], td.columns[cell-1])
-		if err != nil {
-			return EmptyChar
-		}
-		return formatDurationDecimal(val)
+
+	if row == rowN && td.options.IncludeTotalRow {
+		return td.atTotalsRow(cell)
 	}
+
+	if cell == colN && td.options.IncludeTotalCol {
+		return td.atTotalsColumn(row)
+	}
+
+	val, err := td.Get(td.rows[row], td.columns[cell-1])
+	if err != nil {
+		return EmptyChar
+	}
+	return formatDurationDecimal(val)
 }
 
 // Get hours logged for given tag on the given date.
@@ -206,9 +266,16 @@ func (td TimecardData) Get(tag string, date time.Time) (time.Duration, error) {
 
 func (td TimecardData) StringTable() (string, error) {
 	// Format table
-	colNames := make([]string, len(td.columns))
+	var extra int
+	if td.options.IncludeTotalCol {
+		extra++
+	}
+	colNames := make([]string, len(td.columns)+extra)
 	for i, col := range td.columns {
 		colNames[i] = col.Format(DayFormat)
+	}
+	if td.options.IncludeTotalCol {
+		colNames[len(colNames)-1] = "TOTAL"
 	}
 	t := tableFormatter.New().
 		Data(td).
@@ -217,9 +284,13 @@ func (td TimecardData) StringTable() (string, error) {
 		BorderStyle(styles.BorderStyle).
 		StyleFunc(func(row, col int) lipgloss.Style {
 			switch {
+			case row == -1 && col == (td.Columns()-1) && td.options.IncludeTotalCol:
+				return styles.TotalRowStyle
 			case row == -1:
 				return styles.HeaderStyle
-			case row == (td.Rows() - 1):
+			case row == (td.Rows()-1) && td.options.IncludeTotalRow:
+				return styles.TotalRowStyle
+			case col == (td.Columns()-1) && td.options.IncludeTotalCol:
 				return styles.TotalRowStyle
 			case row%2 == 0:
 				return styles.EvenRowStyle
@@ -306,9 +377,30 @@ func midnightLocal(t time.Time) time.Time {
 }
 
 func formatDurationDecimal(d time.Duration) string {
-	dstr := fmt.Sprintf("%g", d.Round(time.Hour/4).Hours())
+	dstr := strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.3f", d.Hours()), "0"), ".")
 	if dstr == "0" {
 		return EmptyChar
 	}
 	return dstr
+}
+
+func getRoundingFunc(increment int) func(time.Duration) time.Duration {
+	if increment == 0 {
+		return func(d time.Duration) time.Duration {
+			return d
+		}
+	}
+	m := time.Minute * time.Duration(increment)
+	return func(d time.Duration) time.Duration {
+		if m <= 0 {
+			return d
+		}
+		// Calculate the remainder (modulo)
+		remainder := d % m
+		if remainder == 0 {
+			return d
+		}
+		// Add the difference to round up
+		return d + (m - remainder)
+	}
 }

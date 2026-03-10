@@ -37,7 +37,7 @@ func (suite *CmdSuite) TestTimecard_WithArgs() {
 	actual := new(bytes.Buffer)
 	RootCmd.SetOut(actual)
 	RootCmd.SetErr(actual)
-	RootCmd.SetArgs([]string{"timecard", "2024-01-01", "-", "2024-01-08"})
+	RootCmd.SetArgs([]string{"timecard", "2026-01-01", "-", "2026-01-08"})
 	err := RootCmd.Execute()
 	suite.Require().NoError(err)
 }
@@ -47,7 +47,7 @@ func (suite *CmdSuite) TestLast() {
 	RootCmd.SetOut(actual)
 	RootCmd.SetArgs([]string{"last"})
 	err := RootCmd.Execute()
-	suite.Equal("20240108T040000\n", actual.String())
+	suite.Equal("20260108T040000\n", actual.String())
 	suite.Require().NoError(err)
 }
 

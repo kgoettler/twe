@@ -5,8 +5,7 @@ import (
 )
 
 var (
-	ColorBackground = lipgloss.Color("238")
-	// ColorPrimaryText = lipgloss.Color("#E6E8EF")
+	ColorBackground  = lipgloss.Color("238")
 	ColorPrimaryText = lipgloss.Color("15")
 	ColorMutedText   = lipgloss.Color("#8B93A6")
 	ColorStructure   = lipgloss.Color("#3A3F4B")
@@ -23,5 +22,5 @@ var (
 	HeaderStyle   = BaseStyle.Foreground(ColorPrimaryText)
 	EvenRowStyle  = BaseStyle
 	OddRowStyle   = BaseStyle
-	TotalRowStyle = EvenRowStyle.Foreground(ColorSuccess)
+	TotalRowStyle = EvenRowStyle.Foreground(ColorAccent)
 )

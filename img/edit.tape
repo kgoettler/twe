@@ -2,7 +2,7 @@
 Output edit.gif
 
 # Set up a 1200x600 terminal with 46px font.
-Set FontSize 24
+Set FontSize 16
 Set Width 1100
 Set Height 600
 
@@ -33,12 +33,15 @@ Left
 Type "e09:30"
 Tab
 Type "Meeting, Standup"
+Tab
+Type "Discussed ticket JIRA-123"
 Escape
 Sleep 1s
 
 
 Type "a"
 Down
+Left
 Left
 Left
 
@@ -52,18 +55,19 @@ Sleep 1s
 
 Up
 Type "a"
-Down
 Left
 
 Type "e10:00"
 Tab
 Type "JIRA-123"
+Tab
+Type "Fixed issue"
 Escape
 
 Sleep 3s
 
 Type "q"
-Type "timew summary :ids"
+Type "timew summary 2026-01-01 :ids"
 Sleep 1s
 Enter
 

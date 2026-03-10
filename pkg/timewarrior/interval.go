@@ -3,6 +3,8 @@ package timewarrior
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -11,10 +13,77 @@ const datetimeLayout = "20060102T150405Z"
 
 // Struct corresponding to a single Timewarrior interval.
 type Interval struct {
-	ID    int       `json:"id"`
-	Start *Datetime `json:"start"`
-	End   *Datetime `json:"end"`
-	Tags  []string  `json:"tags"`
+	ID         int       `json:"id"`
+	Start      *Datetime `json:"start"`
+	End        *Datetime `json:"end"`
+	Tags       []string  `json:"tags"`
+	Annotation string    `json:"annotation,omitempty"`
+}
+
+func NewIntervalFromString(value string) (Interval, error) {
+	// Supported formats:
+	// inc <start> # <tags>
+	// inc <start> # <tags> # "<annotation>"
+	// inc <start> - <end> # <tags>
+	// inc <start> - <end> # <tags> # "<annotation>"
+	var (
+		reClosed = regexp.MustCompile(`^inc (\d{8}T\d{6}Z) - (\d{8}T\d{6}Z) # ?(.*?)(?: # "((?:[^"\\]|\\.)*)")?$`)
+		reOpen   = regexp.MustCompile(`^inc (\d{8}T\d{6}Z) # ?(.*?)(?: # "((?:[^"\\]|\\.)*)")?$`)
+	)
+
+	if matches := reClosed.FindStringSubmatch(value); matches != nil {
+		start, err := NewDatetimeFromString(matches[1])
+		if err != nil {
+			return Interval{}, fmt.Errorf("invalid start datetime: %w", err)
+		}
+		end, err := NewDatetimeFromString(matches[2])
+		if err != nil {
+			return Interval{}, fmt.Errorf("invalid end datetime: %w", err)
+		}
+		tags := parseTags(matches[3])
+		annotation := ""
+		if len(matches) > 4 && matches[4] != "" {
+			annotation = unescapeAnnotation(matches[4])
+		}
+		return Interval{Start: &start, End: &end, Tags: tags, Annotation: annotation}, nil
+	}
+	if matches := reOpen.FindStringSubmatch(value); matches != nil {
+		start, err := NewDatetimeFromString(matches[1])
+		if err != nil {
+			return Interval{}, fmt.Errorf("invalid start datetime: %w", err)
+		}
+		tags := parseTags(matches[2])
+		annotation := ""
+		if len(matches) > 3 && matches[3] != "" {
+			annotation = unescapeAnnotation(matches[3])
+		}
+		return Interval{Start: &start, End: nil, Tags: tags, Annotation: annotation}, nil
+	}
+	return Interval{}, fmt.Errorf("invalid interval string format")
+}
+
+// unescapeAnnotation unescapes escaped quotes in the annotation string.
+func unescapeAnnotation(s string) string {
+	s = strings.ReplaceAll(s, `\\`, `\\`)
+	s = strings.ReplaceAll(s, `\"`, `"`)
+	return s
+}
+
+// parseTags splits the tags string by spaces, handling quoted tags.
+func parseTags(s string) []string {
+	var tags []string
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return tags
+	}
+	// Split by spaces, but keep quoted substrings together
+	re := regexp.MustCompile(`"[^"]+"|\S+`)
+	matches := re.FindAllString(s, -1)
+	for _, tag := range matches {
+		tag = strings.Trim(tag, `"`)
+		tags = append(tags, tag)
+	}
+	return tags
 }
 
 // Returns true if the interval is closed (i.e. end datetime is defined).
@@ -124,6 +193,34 @@ func (interval Interval) Contains(date time.Time) bool {
 	return date.Equal(start) || (date.After(start) && date.Before(end))
 }
 
+func (interval Interval) Equal(other Interval) bool {
+	if interval.Start == other.Start {
+		// do nothing
+	} else if interval.Start == nil || other.Start == nil {
+		return false
+	} else if *interval.Start != *other.Start {
+		return false
+	}
+
+	if interval.End == other.End {
+		// do nothing
+	} else if interval.End == nil || other.End == nil {
+		return false
+	} else if *interval.End != *other.End {
+		return false
+	}
+
+	if !slices.Equal(interval.Tags, other.Tags) {
+		return false
+	}
+
+	if interval.Annotation != other.Annotation {
+		return false
+	}
+
+	return true
+}
+
 func overlapsBothOpen(interval Interval, other Interval) (bool, time.Duration) {
 	// Both intervals are open-ended -> they overlap.
 	// Figure out how much overlap they have as of now.
@@ -205,11 +302,8 @@ func NewDatetimeFromString(s string) (Datetime, error) {
 }
 
 func (t *Datetime) UnmarshalJSON(data []byte) error {
-	// Define the layout string based on the input format
-	layout := "20060102T150405Z"
-
 	// Parse the string into a time.Time struct
-	parsedTime, err := time.Parse(`"`+layout+`"`, string(data))
+	parsedTime, err := time.Parse(`"`+datetimeLayout+`"`, string(data))
 	if err != nil {
 		return err
 	}

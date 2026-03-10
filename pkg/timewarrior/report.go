@@ -10,10 +10,6 @@ import (
 	"strings"
 )
 
-const (
-	hoursInDay = 24
-)
-
 // Report contains the data passed to a Timewarrior report via the [Extension API].
 // [Extension API]: https://timewarrior.net/docs/api/
 type Report struct {
