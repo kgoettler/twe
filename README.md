@@ -82,4 +82,4 @@ timew export :week | vipe | twe import
 
 ## Package
 
-Documentation for the Golang package is available on [pkg.go.dev](https://pkg.go.dev/github.com/kgoettler/twe)
+Documentation for the Golang package is available on [pkg.go.dev](https://pkg.go.dev/github.com/kgoettler/twe/pkg/timewarrior)
