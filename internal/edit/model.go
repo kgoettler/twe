@@ -584,6 +584,7 @@ func (r *Row) Commit(backend TimewarriorBackend) error {
 		for _, interval := range intervals {
 			if r.Interval.Equal(interval) {
 				id = interval.ID
+				break
 			}
 		}
 		if id == 0 {

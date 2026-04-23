@@ -2,6 +2,7 @@ package timecard
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"slices"
 	"strings"
@@ -20,6 +21,15 @@ var (
 	EmptyChar = "-"
 )
 
+const (
+	TimeUnitDecimal = iota
+	TimeUnitHMS
+)
+
+type TimeFormatter = func(d time.Duration) string
+
+type TimeUnit = int
+
 type TimecardOptions struct {
 	Filters      []string
 	Groups       []string
@@ -34,6 +44,9 @@ type TimecardOptions struct {
 
 	// increment (in minutes) up to which each duration will be rounded.
 	Increment int
+
+	// Unit to use when reporting time
+	TimeUnit TimeUnit
 }
 
 // TimecardData contains tabular timecard data.
@@ -57,6 +70,9 @@ type TimecardData struct {
 
 	// Options
 	options TimecardOptions
+
+	// Formatter function
+	formatter TimeFormatter
 
 	round func(d time.Duration) time.Duration
 }
@@ -103,6 +119,7 @@ func NewTimecardData(tw *timew.Report, options TimecardOptions) (TimecardData, e
 		totals:    make(map[time.Time]time.Duration),
 		rowTotals: make(map[string]time.Duration),
 		options:   options,
+		formatter: getFormatter(options.TimeUnit),
 		round:     getRoundingFunc(options.Increment),
 	}
 
@@ -217,14 +234,14 @@ func (td TimecardData) atTotalsColumn(row int) string {
 		return EmptyChar
 	}
 	rowName := td.rows[row]
-	return formatDurationDecimal(td.rowTotals[rowName])
+	return td.formatter(td.rowTotals[rowName])
 }
 
 func (td TimecardData) atTotalsRow(cell int) string {
 	if cell == td.Columns()-1 && td.options.IncludeTotalCol {
 		return EmptyChar
 	}
-	return formatDurationDecimal(td.totals[td.columns[cell-1]])
+	return td.formatter(td.totals[td.columns[cell-1]])
 }
 
 func (td TimecardData) At(row, cell int) string {
@@ -248,7 +265,7 @@ func (td TimecardData) At(row, cell int) string {
 	if err != nil {
 		return EmptyChar
 	}
-	return formatDurationDecimal(val)
+	return td.formatter(val)
 }
 
 // Get hours logged for given tag on the given date.
@@ -376,12 +393,32 @@ func midnightLocal(t time.Time) time.Time {
 	return time.Date(y, m, d, 0, 0, 0, 0, t.Location())
 }
 
+func formatDurationTime(d time.Duration) string {
+	h := int(math.Floor(d.Hours()))
+	m := int(math.Floor((d - (time.Duration(h) * time.Hour)).Minutes()))
+	if m == 0 {
+		return fmt.Sprintf("%dh", h)
+	}
+	return fmt.Sprintf("%dh%dm", h, m)
+}
+
 func formatDurationDecimal(d time.Duration) string {
 	dstr := strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.3f", d.Hours()), "0"), ".")
 	if dstr == "0" {
 		return EmptyChar
 	}
 	return dstr
+}
+
+func getFormatter(unit TimeUnit) TimeFormatter {
+	switch unit {
+	case TimeUnitHMS:
+		return formatDurationTime
+	case TimeUnitDecimal:
+		return formatDurationDecimal
+	default:
+		return formatDurationDecimal
+	}
 }
 
 func getRoundingFunc(increment int) func(time.Duration) time.Duration {

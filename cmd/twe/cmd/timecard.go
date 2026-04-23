@@ -17,6 +17,7 @@ import (
 )
 
 var timecardOptions timecard.TimecardOptions
+var timeUnit string
 
 type BackendCmdTimecard interface {
 	Report(args ...string) (io.Reader, error)
@@ -44,6 +45,15 @@ func RunCmdTimecard(backend BackendCmdTimecard, options timecard.TimecardOptions
 		}
 	}
 	options.OutputFormat = strings.ToLower(options.OutputFormat)
+
+	switch timeUnit {
+	case "decimal":
+		timecardOptions.TimeUnit = timecard.TimeUnitDecimal
+	case "time":
+		timecardOptions.TimeUnit = timecard.TimeUnitHMS
+	default:
+		return "", fmt.Errorf("unrecognized time unit '%s'", timeUnit)
+	}
 
 	// Create timewarrior report object
 	tw, err = timew.NewReport(reader)
@@ -94,6 +104,12 @@ func init() {
 		"total-col",
 		false,
 		"Include column with tag totals",
+	)
+	timecardCmd.Flags().StringVar(
+		&timeUnit,
+		"unit",
+		"decimal",
+		"Output format for report (options: table, csv)",
 	)
 	timecardCmd.Flags().StringVar(
 		&timecardOptions.OutputFormat,
