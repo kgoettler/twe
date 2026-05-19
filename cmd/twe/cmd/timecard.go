@@ -14,10 +14,11 @@ import (
 	timew "github.com/kgoettler/twe/pkg/timewarrior"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 )
 
 var timecardOptions timecard.TimecardOptions
-var timeUnit string
 
 type BackendCmdTimecard interface {
 	Report(args ...string) (io.Reader, error)
@@ -46,15 +47,6 @@ func RunCmdTimecard(backend BackendCmdTimecard, options timecard.TimecardOptions
 	}
 	options.OutputFormat = strings.ToLower(options.OutputFormat)
 
-	switch timeUnit {
-	case "decimal":
-		timecardOptions.TimeUnit = timecard.TimeUnitDecimal
-	case "time":
-		timecardOptions.TimeUnit = timecard.TimeUnitHMS
-	default:
-		return "", fmt.Errorf("unrecognized time unit '%s'", timeUnit)
-	}
-
 	// Create timewarrior report object
 	tw, err = timew.NewReport(reader)
 	if err != nil {
@@ -77,6 +69,21 @@ var timecardCmd = &cobra.Command{
 	Useful for copying into a timecard software.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		cli := timew.NewCLI()
+		timecardOptions.Increment = viper.GetInt("timecard.increment")
+		timecardOptions.IncludeTotalRow = viper.GetBool("timecard.total-row")
+		timecardOptions.IncludeTotalCol = viper.GetBool("timecard.total-col")
+		timecardOptions.Filters = viper.GetStringSlice("timecard.filter")
+		timecardOptions.InputFile = viper.GetString("timecard.file")
+		timecardOptions.OutputFormat = strings.ToLower(viper.GetString("timecard.format"))
+		switch viper.GetString("timecard.unit") {
+		case "decimal":
+			timecardOptions.TimeUnit = timecard.TimeUnitDecimal
+		case "time":
+			timecardOptions.TimeUnit = timecard.TimeUnitHMS
+		default:
+			handleError(cmd, "unrecognized time unit: '%s'", viper.GetString("timecard.unit"))
+		}
+
 		msg, err := RunCmdTimecard(&cli, timecardOptions, args...)
 		if err != nil {
 			handleError(cmd, "running timecard: %s", err.Error())
@@ -85,7 +92,8 @@ var timecardCmd = &cobra.Command{
 	},
 }
 
-func init() {
+func init() { //nolint: gochecknoinits // not applicable to cobra-cli files
+
 	RootCmd.AddCommand(timecardCmd)
 	timecardCmd.Flags().IntVar(
 		&timecardOptions.Increment,
@@ -105,11 +113,10 @@ func init() {
 		false,
 		"Include column with tag totals",
 	)
-	timecardCmd.Flags().StringVar(
-		&timeUnit,
+	timecardCmd.Flags().String(
 		"unit",
 		"decimal",
-		"Output format for report (options: table, csv)",
+		"Time unit for report (options: decimal, time)",
 	)
 	timecardCmd.Flags().StringVar(
 		&timecardOptions.OutputFormat,
@@ -129,4 +136,14 @@ func init() {
 		[]string{},
 		"List of filters to apply to tags. Regular expressions are supported",
 	)
+
+	flags := timecardCmd.Flags()
+
+	flags.VisitAll(func(f *pflag.Flag) {
+		viperKey := fmt.Sprintf("timecard.%s", f.Name)
+		ConfigKeys[viperKey] = struct{}{}
+		if err := viper.BindPFlag(viperKey, f); err != nil {
+			panic(fmt.Sprintf("viper.BindPFlag(%q): %v", viperKey, err))
+		}
+	})
 }
