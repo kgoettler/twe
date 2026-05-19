@@ -5,12 +5,15 @@ Copyright © 2024 Ken Goettler <goettlek@gmail.com>
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"slices"
+	"path/filepath"
 
 	timew "github.com/kgoettler/twe/pkg/timewarrior"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var TIMEW_COMMANDS = []string{
@@ -46,6 +49,7 @@ var TIMEW_COMMANDS = []string{
 	"untag",
 	"week",
 }
+var cfgFile string
 
 var RootCmd = &cobra.Command{
 	Use:   "twe",
@@ -90,4 +94,32 @@ func handleCLIError(cmd *cobra.Command, err error) {
 }
 
 func init() {
+	cobra.OnInitialize(initConfig)
+	RootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default: $HOME/.config/twe/config.yaml)")
+}
+
+func initConfig() {
+	viper.SetConfigFile(resolveConfigFilePath())
+	viper.SetConfigType("yaml")
+	if err := viper.ReadInConfig(); err != nil && !errors.Is(err, os.ErrNotExist) {
+		fmt.Fprintln(os.Stderr, "error reading config file:", err)
+		os.Exit(1)
+	}
+}
+
+// resolveConfigFilePath returns the config file path using the precedence:
+// --config flag > TWE_CONFIG env var > default ($HOME/.config/twe/config.yaml).
+func resolveConfigFilePath() string {
+	if cfgFile != "" {
+		return cfgFile
+	}
+	if p := os.Getenv("TWE_CONFIG"); p != "" {
+		return p
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	return filepath.Join(home, ".config", "twe", "config.yaml")
 }
