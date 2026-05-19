@@ -12,10 +12,11 @@ import (
 
 // Error struct containing information returned by the Timewarrior CLI.
 type CLIError struct {
-	Command string
-	Stdout  string
-	Stderr  string
-	error   error
+	Command  string
+	ExitCode int
+	Stdout   string
+	Stderr   string
+	error    error
 }
 
 // Returns STDERR.
@@ -116,7 +117,11 @@ func (cli *CLI) Retag(id int, tags []string) error {
 	return err
 }
 
-func (cli *CLI) Stop(stopTime *string) error {
+func (cli *CLI) Run(args ...string) ([]byte, error) {
+	return cli.runCommand(args...)
+}
+
+func (cli *CLI) Stop(stopTime *string) (error) {
 	args := []string{
 		"stop",
 	}
@@ -170,10 +175,11 @@ func (cli *CLI) runCommand(args ...string) ([]byte, error) {
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {
 			newErr := &CLIError{
-				Command: strings.Join(cmd.Args, " "),
-				Stdout:  string(output),
-				Stderr:  string(ee.Stderr),
-				error:   err,
+				Command:  strings.Join(cmd.Args, " "),
+				ExitCode: ee.ExitCode(),
+				Stdout:   string(output),
+				Stderr:   string(ee.Stderr),
+				error:    err,
 			}
 			return nil, newErr
 		}
