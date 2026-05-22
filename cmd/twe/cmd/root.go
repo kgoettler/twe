@@ -16,7 +16,7 @@ import (
 var TIMEW_COMMANDS = []string{
 	"annotate",
 	"cancel",
-	"config",
+	// "config",
 	"continue",
 	"day",
 	"delete",
@@ -28,7 +28,6 @@ var TIMEW_COMMANDS = []string{
 	"help",
 	"join",
 	"lengthen",
-	"modify",
 	"modify",
 	"month",
 	"move",
