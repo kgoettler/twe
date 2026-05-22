@@ -5,65 +5,67 @@ Copyright © 2024 Ken Goettler <goettlek@gmail.com>
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	edit "github.com/kgoettler/twe/internal/edit"
 	timew "github.com/kgoettler/twe/pkg/timewarrior"
-
-	tea "github.com/charmbracelet/bubbletea"
-
 	"github.com/spf13/cobra"
 )
+
+func RunCmdEdit(backend edit.TimewarriorBackend, args ...string) (*edit.Model, error) {
+	// Parse date argument (if provided)
+	var dateString string
+	var date time.Time
+	var err error
+	if len(args) > 0 {
+		dateString = args[0]
+	} else if len(os.Getenv("TWE_EDIT_DATE")) > 0 {
+		dateString = os.Getenv("TWE_EDIT_DATE")
+	}
+	if len(dateString) > 0 {
+		date, err = timew.ConvertDateStringToTime(time.Now(), strings.ToLower(dateString))
+		if err != nil {
+			return nil, fmt.Errorf("input date '%s' is not a valid date", dateString)
+		}
+	} else {
+		date = time.Now()
+	}
+
+	// Setup application model
+	m, err := edit.NewModel(backend, date, nil)
+	if err != nil {
+		return nil, fmt.Errorf("initializing application: %v", err)
+	}
+
+	return &m, nil
+}
 
 var editCmd = &cobra.Command{
 	Use:   "edit",
 	Args:  cobra.MaximumNArgs(1),
 	Short: "Edit today's timewarrior data",
 	Run: func(cmd *cobra.Command, args []string) {
-		// Setup logger
 		var f *os.File
 		var err error
-		if len(os.Getenv("TWE_DEBUG")) > 0 {
-			f, err = tea.LogToFile("debug.log", "debug")
+		if len(os.Getenv("TWE_LOGFILE")) > 0 {
+			f, err = tea.LogToFile(os.Getenv("TWE_LOGFILE"), "debug")
 			if err != nil {
-				handleError(cmd, "configuring logger: %v", err)
+				handleError(cmd, "configuring logger: %s", err.Error())
 			}
 			defer f.Close()
 		}
-
-		// Setup CLI backend
 		cli := timew.NewCLI()
-
-		// Parse date argument (if provided)
-		var dateString string
-		if len(args) > 0 {
-			dateString = args[0]
-		} else if len(os.Getenv("TWE_EDIT_DATE")) > 0 {
-			dateString = os.Getenv("TWE_EDIT_DATE")
-		}
-		var date time.Time
-		if len(dateString) > 0 {
-			date, err = timew.ConvertDateStringToTime(time.Now(), strings.ToLower(dateString))
-			if err != nil {
-				handleError(cmd, "input date '%s' is not a valid date", args[0])
-			}
-		} else {
-			date = time.Now()
-		}
-
-		// Setup application model
-		m, err := edit.NewModel(&cli, date, f)
+		m, err := RunCmdEdit(&cli, args...)
 		if err != nil {
-			handleError(cmd, "initializing application: %v", err)
-			os.Exit(1)
+			handleError(cmd, "initializing editor: %s", err.Error())
 		}
-
-		// Run application
 		p := tea.NewProgram(m)
 		if _, err := p.Run(); err != nil {
-			handleError(cmd, "running application: %v", err)
+			handleError(cmd, "running editor: %v", err)
 		}
 	},
 }

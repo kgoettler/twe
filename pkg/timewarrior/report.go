@@ -24,7 +24,7 @@ func NewReport(reader io.Reader) (*Report, error) {
 	scanner := bufio.NewScanner(reader)
 
 	// Read config + intervals
-	configPattern := regexp.MustCompile(`([a-z\.]*): (.*)`)
+	configPattern := regexp.MustCompile(`^([a-z\.]{1,}): (.*)$`)
 	jsonPattern := regexp.MustCompile(`({.*})`)
 	intervals := make([]Interval, 0)
 	config := map[string]string{}

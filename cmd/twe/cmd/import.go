@@ -20,6 +20,39 @@ type ImportOptions struct {
 
 var importOptions ImportOptions
 
+type BackendCmdImport interface {
+	Track(interval timew.Interval) error
+}
+
+func RunCmdImport(backend BackendCmdImport, reader io.Reader) error {
+	// Get io.Reader for input
+	// Parse input
+	var input []timew.Interval
+	if err := json.NewDecoder(reader).Decode(&input); err != nil {
+		return fmt.Errorf("decoding intervals: %w", err)
+	}
+
+	// Sort intervals by start time
+	slices.SortFunc(input, func(a, b timew.Interval) int {
+		if a.Start.Time.Before(b.Start.Time) {
+			return -1
+		} else if a.Start.Time.After(b.Start.Time) {
+			return 1
+		}
+		return 0
+	})
+
+	// Import intervals one-by-one
+	for _, interval := range input {
+		err := backend.Track(interval)
+		if err != nil {
+			return fmt.Errorf("unable to import interval %v: %v", err, interval)
+		}
+	}
+
+	return nil
+}
+
 // importCmd represents the import command
 var importCmd = &cobra.Command{
 	Use:   "import",
@@ -39,30 +72,10 @@ var importCmd = &cobra.Command{
 			reader = cmd.InOrStdin()
 		}
 
-		// Parse input
-		var input []timew.Interval
-		if err := json.NewDecoder(reader).Decode(&input); err != nil {
-			fmt.Println("Error: Invalid JSON array")
-			return
-		}
-
-		// Sort intervals by start time
-		slices.SortFunc(input, func(a, b timew.Interval) int {
-			if a.Start.Time.Before(b.Start.Time) {
-				return -1
-			} else if a.Start.Time.After(b.Start.Time) {
-				return 1
-			}
-			return 0
-		})
-
-		// Import intervals one-by-one
 		cli := timew.NewCLI()
-		for _, interval := range input {
-			err := cli.Track(interval)
-			if err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "unable to import interval %d: %v\n", interval.ID, err)
-			}
+		err := RunCmdImport(&cli, reader)
+		if err != nil {
+			handleError(cmd, "importing intervals: %s", err.Error())
 		}
 	},
 }

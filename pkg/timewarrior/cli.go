@@ -121,7 +121,7 @@ func (cli *CLI) Run(args ...string) ([]byte, error) {
 	return cli.runCommand(args...)
 }
 
-func (cli *CLI) Stop(stopTime *string) (error) {
+func (cli *CLI) Stop(stopTime *string) error {
 	args := []string{
 		"stop",
 	}
