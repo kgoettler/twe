@@ -18,6 +18,47 @@ import (
 
 var timecardOptions timecard.TimecardOptions
 
+type BackendCmdTimecard interface {
+	Report(args ...string) (io.Reader, error)
+}
+
+func RunCmdTimecard(backend BackendCmdTimecard, options timecard.TimecardOptions, args ...string) (string, error) {
+	var tw *timew.Report
+	var reader io.Reader
+	var err error
+	if options.InputFile != "" {
+		file, err := os.Open(options.InputFile)
+		if err != nil {
+			return "", fmt.Errorf("opening input file %s: %w", options.InputFile, err)
+		}
+		defer file.Close()
+		reader = file
+	} else {
+		// Get Intervals from export
+		if len(args) == 0 {
+			args = append(args, ":week")
+		}
+		reader, err = backend.Report(append([]string{"echo"}, args...)...)
+		if err != nil {
+			return "", fmt.Errorf("running 'echo' report: %w", err)
+		}
+	}
+	options.OutputFormat = strings.ToLower(options.OutputFormat)
+
+	// Create timewarrior report object
+	tw, err = timew.NewReport(reader)
+	if err != nil {
+		return "", fmt.Errorf("parsing 'echo' output: %w", err)
+	}
+
+	// Run
+	msg, err := timecard.Run(tw, options)
+	if err != nil {
+		return "", fmt.Errorf("running report: %w", err)
+	}
+	return msg, nil
+}
+
 var timecardCmd = &cobra.Command{
 	Use:   "timecard",
 	Short: "Weekly timecard report for Timewarrior",
@@ -25,46 +66,12 @@ var timecardCmd = &cobra.Command{
 	
 	Useful for copying into a timecard software.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		var tw *timew.Report
-		var reader io.Reader
-		var err error
-		if timecardOptions.InputFile != "" {
-			file, err := os.Open(timecardOptions.InputFile)
-			if err != nil {
-				handleError(cmd, "opening input file %s: %s\n", timecardOptions.InputFile, err)
-				os.Exit(1)
-			}
-			defer file.Close()
-			reader = file
-		} else {
-			// Get Intervals from export
-			if len(args) == 0 {
-				args = append(args, ":week")
-			}
-			cli := timew.NewCLI()
-			reader, err = cli.Report(append([]string{"echo"}, args...)...)
-			if err != nil {
-				handleError(cmd, "running 'echo' report: %s\n", err)
-				os.Exit(1)
-			}
-		}
-		timecardOptions.OutputFormat = strings.ToLower(timecardOptions.OutputFormat)
-
-		// Create timewarrior report object
-		tw, err = timew.NewReport(reader)
+		cli := timew.NewCLI()
+		msg, err := RunCmdTimecard(&cli, timecardOptions, args...)
 		if err != nil {
-			handleError(cmd, "parsing 'echo' output: %s\n", err)
-			os.Exit(1)
+			handleError(cmd, "running timecard: %s", err.Error())
 		}
-
-		// Run
-		msg, err := timecard.Run(tw, timecardOptions)
-		if err != nil {
-			handleError(cmd, "%s", err)
-			os.Exit(1)
-		}
-		fmt.Fprint(cmd.OutOrStdout(), msg)
-		fmt.Fprint(cmd.OutOrStdout(), "\n")
+		fmt.Fprintf(cmd.OutOrStdout(), "%s\n", msg)
 	},
 }
 
