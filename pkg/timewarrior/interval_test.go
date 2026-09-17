@@ -116,6 +116,22 @@ func (suite *IntervalSuite) TestIsOpen_False() {
 	suite.False(res)
 }
 
+func (suite *IntervalSuite) TestDuration() {
+	interval, err := NewIntervalFromString(`inc 20260101T000000Z - 20260101T010000Z # Test "Code Review"`)
+	suite.NoError(err)
+	res, err := interval.Duration()
+	suite.NoError(err)
+	suite.Equal(time.Hour, res)
+}
+
+func (suite *IntervalSuite) TestDurationErr() {
+	interval, err := NewIntervalFromString(`inc 20260101T000000Z # Test "Code Review"`)
+	suite.NoError(err)
+	res, err := interval.Duration()
+	suite.Error(err)
+	suite.Equal(time.Duration(0), res)
+}
+
 func (c intervalCase) getIntervals() []Interval {
 	// Parse the string into a time.Time struct
 	parsedTimes := make([]*Datetime, len(c.times))

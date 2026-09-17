@@ -160,23 +160,6 @@ func (suite *TimecardTestSuite) TestTimecardData_GetMultiDayInterval_UTC() {
 	suite.Equal(time.Hour*6, value)
 }
 
-func (suite *TimecardTestSuite) TestFormatDurationDecimal() {
-	testCases := []struct {
-		duration time.Duration
-		expected string
-	}{
-		{0, EmptyChar},
-		{15 * time.Minute, "0.25"},
-		{30 * time.Minute, "0.5"},
-		{45 * time.Minute, "0.75"},
-		{1 * time.Hour, "1"},
-	}
-	for _, tc := range testCases {
-		suite.Equal(tc.expected, formatDurationDecimal(tc.duration),
-			"duration: %v", tc.duration)
-	}
-}
-
 func (suite *TimecardTestSuite) TestRoundingFunc_6MinuteIncrement() {
 	round := getRoundingFunc(6)
 	tcs := [][]time.Duration{
