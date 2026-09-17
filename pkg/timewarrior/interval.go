@@ -113,6 +113,18 @@ func (interval Interval) DatabaseString() string {
 	)
 }
 
+// Returns a time.Duration for the interval.
+func (interval Interval) Duration() (time.Duration, error) {
+	if interval.Start == nil {
+		return 0, fmt.Errorf("start time is nil")
+	}
+	if interval.End == nil {
+		return 0, fmt.Errorf("end time is nil -- interval is open")
+	}
+	duration := interval.End.Time.Sub(interval.Start.Time)
+	return duration, nil
+}
+
 // Return a new Interval where the start and end time locations are set to the local timezone.
 func (interval Interval) Localize() Interval {
 	out := Interval{

@@ -2,7 +2,6 @@ package timecard
 
 import (
 	"fmt"
-	"math"
 	"regexp"
 	"slices"
 	"strings"
@@ -393,31 +392,14 @@ func midnightLocal(t time.Time) time.Time {
 	return time.Date(y, m, d, 0, 0, 0, 0, t.Location())
 }
 
-func formatDurationTime(d time.Duration) string {
-	h := int(math.Floor(d.Hours()))
-	m := int(math.Floor((d - (time.Duration(h) * time.Hour)).Minutes()))
-	if m == 0 {
-		return fmt.Sprintf("%dh", h)
-	}
-	return fmt.Sprintf("%dh%dm", h, m)
-}
-
-func formatDurationDecimal(d time.Duration) string {
-	dstr := strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.3f", d.Hours()), "0"), ".")
-	if dstr == "0" {
-		return EmptyChar
-	}
-	return dstr
-}
-
 func getFormatter(unit TimeUnit) TimeFormatter {
 	switch unit {
 	case TimeUnitHMS:
-		return formatDurationTime
+		return timew.FormatDurationTime
 	case TimeUnitDecimal:
-		return formatDurationDecimal
+		return timew.FormatDurationDecimal
 	default:
-		return formatDurationDecimal
+		return timew.FormatDurationDecimal
 	}
 }
 
