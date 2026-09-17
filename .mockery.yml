@@ -19,3 +19,8 @@ packages:
       BackendCmdImport:
       BackendCmdLast:
       BackendCmdTimecard:
+  github.com/kgoettler/twe/internal/edit:
+    config:
+      all: false
+    interfaces:
+      TimewarriorBackend:
