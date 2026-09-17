@@ -187,7 +187,14 @@ func (m Model) Init() tea.Cmd {
 func (m *Model) GetCurrentCell() *cell {
 	i := m.cursor.GetRow()
 	j := m.cursor.GetCol()
-	return &(m.data[i].cells[j])
+	if len(m.data) == 0 || i >= len(m.data) {
+		return nil
+	}
+	row := m.data[i]
+	if j >= len(row.cells) {
+		return nil
+	}
+	return &(row.cells[j])
 }
 
 func (m Model) moveRightWhileEditing() (tea.Model, tea.Cmd) {
@@ -278,9 +285,11 @@ func (m Model) handleTableNavigation(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m, cmd = m.RemoveRow()
 
 		case key.Matches(msg, m.keys.Select):
-			m.isEditing = true
 			cell := m.GetCurrentCell()
-			cmd = cell.Focus()
+			if cell != nil {
+				m.isEditing = true
+				cmd = cell.Focus()
+			}
 
 		case key.Matches(msg, m.keys.Help):
 			m.help.ShowAll = !m.help.ShowAll
@@ -290,6 +299,12 @@ func (m Model) handleTableNavigation(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, m.keys.Undo):
 			m, cmd = m.Undo()
+
+		case key.Matches(msg, m.keys.InsertCurrentTime):
+			cell := m.GetCurrentCell()
+			if cell != nil {
+				m, cmd = m.InsertCurrentTime()
+			}
 		}
 	case MsgError:
 		if msg.err != nil {
@@ -426,6 +441,18 @@ func (m Model) AddRow() (Model, tea.Cmd) {
 
 	m.cursor.AddRow()
 	m.cursor.Down()
+	return m, nil
+}
+
+func (m Model) InsertCurrentTime() (Model, tea.Cmd) {
+	i := m.cursor.pos.row
+	j := m.cursor.pos.col
+
+	timeStr := time.Now().Format("15:04")
+
+	cell := &(m.data[i].cells[j])
+	cell.SetValue(timeStr)
+
 	return m, nil
 }
 

@@ -37,17 +37,18 @@ var editKeys = editModeKeys{
 }
 
 type keyMap struct {
-	Up     key.Binding
-	Down   key.Binding
-	Left   key.Binding
-	Right  key.Binding
-	Add    key.Binding
-	Remove key.Binding
-	Help   key.Binding
-	Reload key.Binding
-	Select key.Binding
-	Quit   key.Binding
-	Undo   key.Binding
+	Up                key.Binding
+	Down              key.Binding
+	Left              key.Binding
+	Right             key.Binding
+	Add               key.Binding
+	Remove            key.Binding
+	Help              key.Binding
+	InsertCurrentTime key.Binding
+	Reload            key.Binding
+	Select            key.Binding
+	Quit              key.Binding
+	Undo              key.Binding
 }
 
 // ShortHelp returns keybindings to be shown in the mini help view. It's part
@@ -110,5 +111,9 @@ var keys = keyMap{
 	Undo: key.NewBinding(
 		key.WithKeys("u"),
 		key.WithHelp("u", "undo"),
+	),
+	InsertCurrentTime: key.NewBinding(
+		key.WithKeys("i"),
+		key.WithHelp("i", "insert current time"),
 	),
 }
