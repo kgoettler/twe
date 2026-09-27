@@ -10,7 +10,9 @@ endif
 INSTALLDIR ?=$(HOME)/.local/bin
 
 VERSION:=$(shell \
-	if [ -z "$(shell git status --porcelain)" ] && git describe --tags --exact-match >/dev/null 2>&1; then \
+	if [ -n "$$TWE_VERSION" ]; then \
+		echo "$$TWE_VERSION"; \
+	elif [ -z "$(shell git status --porcelain)" ] && git describe --tags --exact-match >/dev/null 2>&1; then \
 		git describe --tags --exact-match; \
 	else \
 		echo $$(git rev-parse --abbrev-ref HEAD).$$(git rev-parse --short HEAD); \
@@ -20,12 +22,22 @@ build:
 	go build -ldflags="-X 'main.Version=$(VERSION)'" -o ${BINDIR}/twe ./cmd/twe/main.go
 	go build -o ${BINDIR}/echo ./cmd/echo/main.go
 
+build-release:
+	for os in windows linux darwin; do \
+		for arch in amd64 arm64; do \
+			echo "Building $$os $$arch"; \
+			GOOS=$$os GOARCH=$$arch go build -ldflags="-X 'main.Version=$(VERSION)'" -o ${BINDIR}/twe ./cmd/twe/main.go && \
+			GOOS=$$os GOARCH=$$arch go build -o ${BINDIR}/echo ./cmd/echo/main.go && \
+			zip -j ${BINDIR}/twe_$(VERSION)_$${os}_$${arch}.zip ${BINDIR}/twe ${BINDIR}/echo; \
+		done \
+	done
+
 clean:
 	go clean -testcache
 	rm -rf ./bin/*
 
 install: clean build
-	chmod +x ./bin/*
+	chmod +x ./bin/twe ./bin/echo
 	mkdir -p $(INSTALLDIR)
 	cp ./bin/twe $(INSTALLDIR)
 	cp ./bin/echo $(TIMEWARRIORDB)/extensions/
